@@ -1,0 +1,9 @@
+[workspace]
+members = ["http-server", "ws-server", "engine", "db-processor"]
+
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+authors = ["Tarun Kumar"]

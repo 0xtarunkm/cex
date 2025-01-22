@@ -1,0 +1,7 @@
+[package]
+name = "http-server"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+
+[dependencies]
