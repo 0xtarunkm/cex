@@ -523,8 +523,6 @@ dependencies = [
 name = "engine"
 version = "0.1.0"
 dependencies = [
- "actix-web",
- "once_cell",
  "rand",
  "rust_decimal",
  "rust_decimal_macros",
@@ -675,6 +673,11 @@ dependencies = [
 [[package]]
 name = "http-server"
 version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "httparse"
