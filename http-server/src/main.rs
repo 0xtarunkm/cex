@@ -1,12 +1,18 @@
 use actix_web::{web, App, HttpServer};
+use lib::RedisManager;
 
+mod lib;
 mod models;
 mod routes;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| {
-        App::new().service(
+    std::env::set_var("RUST_LOG", "debug");
+    env_logger::init();
+    let redis_manager = web::Data::new(RedisManager::new());
+
+    HttpServer::new(move || {
+        App::new().app_data(redis_manager.clone()).service(
             web::scope("/api/v1")
                 .service(
                     web::scope("/order")

@@ -1,0 +1,107 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "type")]
+pub enum MessageFromOrderbook {
+    #[serde(rename = "DEPTH")]
+    Depth { payload: DepthPayload },
+    #[serde(rename = "ORDER_PLACED")]
+    OrderPlaced { payload: OrderPlacedPayload },
+    #[serde(rename = "ORDER_CANCELLED")]
+    OrderCancelled { payload: OrderCancelledPayload },
+    #[serde(rename = "OPEN_ORDERS")]
+    OpenOrders { payload: Vec<OpenOrder> },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DepthPayload {
+    pub market: String,
+    pub bids: Vec<[String; 2]>,
+    pub asks: Vec<[String; 2]>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OrderPlacedPayload {
+    pub order_id: String,
+    pub executed_qty: f64,
+    pub fills: Vec<Fill>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Fill {
+    pub price: String,
+    pub qty: f64,
+    pub trade_id: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OrderCancelledPayload {
+    pub order_id: String,
+    pub executed_qty: f64,
+    pub remaining_qty: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OpenOrder {
+    pub order_id: String,
+    pub executed_qty: f64,
+    pub price: String,
+    pub quantity: String,
+    pub side: OrderSide,
+    pub user_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum OrderSide {
+    Buy,
+    Sell,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "type")]
+pub enum MessageToEngine {
+    #[serde(rename = "CREATE_ORDER")]
+    CreateOrder { data: CreateOrderData },
+    #[serde(rename = "CANCEL_ORDER")]
+    CancelOrder { data: CancelOrderData },
+    #[serde(rename = "ON_RAMP")]
+    OnRamp { data: OnRampData },
+    #[serde(rename = "GET_DEPTH")]
+    GetDepth { data: GetDepthData },
+    #[serde(rename = "GET_OPEN_ORDERS")]
+    GetOpenOrders { data: GetOpenOrdersData },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CreateOrderData {
+    pub market: String,
+    pub price: String,
+    pub quantity: String,
+    pub side: OrderSide,
+    pub user_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CancelOrderData {
+    pub order_id: String,
+    pub market: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OnRampData {
+    pub amount: String,
+    pub user_id: String,
+    pub txn_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GetDepthData {
+    pub market: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GetOpenOrdersData {
+    pub user_id: String,
+    pub market: String,
+}
