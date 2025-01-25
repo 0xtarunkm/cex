@@ -1,8 +1,6 @@
-use actix_web::{get, web, HttpResponse, Responder};
-
-use crate::models::GetTicker;
+use actix_web::{get, HttpResponse, Responder};
 
 #[get("/")]
-async fn ticker(data: web::Json<GetTicker>) -> impl Responder {
+async fn ticker() -> impl Responder {
     HttpResponse::Ok().json("ticker")
 }
