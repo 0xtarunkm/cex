@@ -1,8 +1,8 @@
 use actix_web::{get, web, HttpResponse, Responder};
 
 use crate::{
-    lib::RedisManager,
     models::{GetDepthData, MessageToEngine},
+    utils::RedisManager,
 };
 
 #[get("/")]

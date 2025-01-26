@@ -1,14 +1,15 @@
 use actix_web::{web, App, HttpServer};
-use lib::RedisManager;
+use utils::RedisManager;
 
-mod lib;
 mod models;
 mod routes;
+mod utils;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "debug");
     env_logger::init();
+
     let redis_manager = web::Data::new(RedisManager::new());
 
     HttpServer::new(move || {

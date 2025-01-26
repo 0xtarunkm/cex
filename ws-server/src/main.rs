@@ -67,6 +67,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 async fn main() {
     std::env::set_var("RUST_LOG", "debug");
     env_logger::init();
+
     let subscription_manager = Arc::new(SubscriptionManager::new().await);
 
     let app_state = AppState {

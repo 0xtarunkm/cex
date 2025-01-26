@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct User {
     pub id: Uuid,
     pub subscriptions: Arc<Mutex<Vec<String>>>,

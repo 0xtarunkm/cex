@@ -11,5 +11,6 @@ struct GetKlines {
 
 #[get("/")]
 pub async fn get_klines(kline: web::Json<GetKlines>) -> impl Responder {
+    // query the timescale db for trades
     HttpResponse::Ok().json("klines")
 }
