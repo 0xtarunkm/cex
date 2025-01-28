@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
@@ -18,8 +19,8 @@ pub enum MessageToEngine {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateOrderData {
     pub market: String,
-    pub price: String,
-    pub quantity: String,
+    pub price: Decimal,
+    pub quantity: Decimal,
     pub side: String,
     pub user_id: String,
 }
@@ -63,23 +64,24 @@ pub enum MessageFromEngine {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DepthPayload {
-    pub market: String,
-    pub bids: Vec<[String; 2]>,
-    pub asks: Vec<[String; 2]>,
+    pub bids: Vec<(String, String)>,
+    pub asks: Vec<(String, String)>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OrderPlacedPayload {
     pub order_id: String,
-    pub executed_qty: f64,
+    pub executed_qty: Decimal,
     pub fills: Vec<Fill>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Fill {
     pub price: String,
-    pub qty: f64,
+    pub quantity: Decimal,
     pub trade_id: u64,
+    pub other_user_id: String,
+    pub marker_order_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

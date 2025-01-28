@@ -7,7 +7,7 @@ pub struct IncomingMessage {
     pub message: MessageFromApi,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Order {
     pub price: Decimal,
     pub quantity: Decimal,
@@ -17,7 +17,7 @@ pub struct Order {
     pub order_id: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub enum OrderSide {
     Buy,
     Sell,
@@ -40,8 +40,8 @@ pub struct MatchResult {
 
 #[derive(Debug)]
 pub struct AssetBalance {
-    available: Decimal,
-    locked: Decimal,
+    pub available: Decimal,
+    pub locked: Decimal,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -99,6 +99,10 @@ pub enum MessageToApi {
     OrderPlaced { payload: OrderPlacedPayload },
     #[serde(rename = "ORDER_CANCELLED")]
     OrderCancelled { payload: OrderCancelledPayload },
+    #[serde(rename = "OPEN_ORDERS")]
+    OpenOrders { payload: OpenOrdersPayload },
+    #[serde(rename = "DEPTH")]
+    Depth { payload: DepthPayload },
 }
 
 #[derive(Debug, Serialize)]
@@ -113,4 +117,15 @@ pub struct OrderCancelledPayload {
     pub order_id: String,
     pub executed_qty: Decimal,
     pub remaining_qty: Decimal,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OpenOrdersPayload {
+    pub open_orders: Vec<Order>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DepthPayload {
+    pub bids: Vec<(String, String)>,
+    pub asks: Vec<(String, String)>,
 }

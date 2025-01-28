@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 use crate::{
     models::{
-        AssetBalance, Fill, MessageFromApi, MessageToApi, Order, OrderCancelledPayload,
-        OrderPlacedPayload, OrderSide,
+        AssetBalance, Fill, MessageFromApi, MessageToApi, OpenOrdersPayload, Order,
+        OrderCancelledPayload, OrderPlacedPayload, OrderSide,
     },
     utils::redis_manager::RedisManager,
 };
@@ -62,12 +62,9 @@ impl Engine {
                             },
                         };
 
-                        println!("inside the result");
-
                         let _ = redis_manager.send_to_api(&client_id, &message);
                     }
                     Err(e) => {
-                        println!("Error creating order: {}", e);
                         let redis_manager = RedisManager::instance();
                         let message = MessageToApi::OrderCancelled {
                             payload: OrderCancelledPayload {
@@ -79,6 +76,75 @@ impl Engine {
 
                         let _ = redis_manager.send_to_api(&client_id, &message);
                     }
+                }
+            }
+            MessageFromApi::CancelOrder { data } => {
+                let mut orderbook_guard = self.orderbooks.lock().unwrap();
+                let orderbook = orderbook_guard
+                    .iter_mut()
+                    .find(|o| o.ticker() == data.market)
+                    .ok_or("No orderbook found");
+
+                if let Ok(orderbook) = orderbook {
+                    let order = orderbook
+                        .asks
+                        .iter()
+                        .find(|o| o.order_id == data.order_id)
+                        .or_else(|| orderbook.bids.iter().find(|o| o.order_id == data.order_id));
+
+                    match order {
+                        Some(order) => {
+                            let redis_manager = RedisManager::instance();
+                            let message = MessageToApi::OrderCancelled {
+                                payload: OrderCancelledPayload {
+                                    order_id: order.order_id.clone(),
+                                    executed_qty: Decimal::new(0, 0),
+                                    remaining_qty: Decimal::new(0, 0),
+                                },
+                            };
+
+                            let _ = redis_manager.send_to_api(&client_id, &message);
+                        }
+                        None => {}
+                    }
+                } else {
+                    println!("orderbook not found");
+                }
+            }
+            MessageFromApi::GetOpenOrders { data } => {
+                let mut orderbook_guard = self.orderbooks.lock().unwrap();
+                let orderbook = orderbook_guard
+                    .iter_mut()
+                    .find(|o| o.ticker() == data.market)
+                    .ok_or("No orderbook found");
+                if let Ok(orderbook) = orderbook {
+                    let open_orders = orderbook.get_open_orders(data.user_id);
+
+                    let redis_manager = RedisManager::instance();
+                    let message = MessageToApi::OpenOrders {
+                        payload: OpenOrdersPayload { open_orders },
+                    };
+
+                    let _ = redis_manager.send_to_api(&client_id, &message);
+                } else {
+                    println!("no orderbook found");
+                }
+            }
+            MessageFromApi::GetDepth { data } => {
+                let mut orderbook_guard = self.orderbooks.lock().unwrap();
+                let orderbook = orderbook_guard
+                    .iter_mut()
+                    .find(|o| o.ticker() == data.market)
+                    .ok_or("No orderbook found");
+                if let Ok(orderbook) = orderbook {
+                    let depth = orderbook.get_depth();
+
+                    let redis_manager = RedisManager::instance();
+                    let message = MessageToApi::Depth { payload: depth };
+
+                    let _ = redis_manager.send_to_api(&client_id, &message);
+                } else {
+                    println!("no orderbook found");
                 }
             }
             _ => {}

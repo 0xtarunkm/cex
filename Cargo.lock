@@ -1212,6 +1212,7 @@ dependencies = [
  "log",
  "r2d2",
  "redis",
+ "rust_decimal",
  "serde",
  "serde_json",
  "tokio",

@@ -1,11 +1,11 @@
-use actix_web::{get, web, HttpResponse, Responder};
+use actix_web::{get, post, web, HttpResponse, Responder};
 
 use crate::{
     models::messages::{GetDepthData, MessageToEngine},
     utils::redis_manager::RedisManager,
 };
 
-#[get("/get")]
+#[post("/")]
 async fn get_depth(
     depth_data: web::Json<GetDepthData>,
     redis_manager: web::Data<RedisManager>,
