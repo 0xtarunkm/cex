@@ -1,5 +1,5 @@
-use actix_web::{web, App, HttpServer};
-use utils::RedisManager;
+use actix_web::{web, App, HttpResponse, HttpServer};
+use utils::redis_manager::RedisManager;
 
 mod models;
 mod routes;
@@ -15,17 +15,23 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new().app_data(redis_manager.clone()).service(
             web::scope("/api/v1")
+                .route(
+                    "/healthcheck",
+                    web::get().to(|| async { HttpResponse::Ok().json("success: true") }),
+                )
                 .service(
                     web::scope("/order")
                         .service(routes::create_order)
                         .service(routes::delete_order)
-                        .service(routes::open),
+                        .service(routes::open_orders),
                 )
-                .service(web::scope("/ticker").service(routes::ticker))
+                .service(web::scope("/depth").service(routes::get_depth))
                 .service(web::scope("/klines").service(routes::get_klines))
-                .service(web::scope("/depth").service(routes::get_depth)),
+                .service(web::scope("/tickers").service(routes::get_tickers))
+                .service(web::scope("/user").service(routes::onramp)),
         )
     })
+    .workers(4)
     .bind(("127.0.0.1", 8080))?
     .run()
     .await

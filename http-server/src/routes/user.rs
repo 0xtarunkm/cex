@@ -1,17 +1,17 @@
-use actix_web::{get, web, HttpResponse, Responder};
+use actix_web::{post, web, HttpResponse, Responder};
 
 use crate::{
-    models::messages::{GetDepthData, MessageToEngine},
+    models::messages::{MessageToEngine, OnRampData},
     utils::redis_manager::RedisManager,
 };
 
-#[get("/get")]
-async fn get_depth(
-    depth_data: web::Json<GetDepthData>,
+#[post("onramp")]
+async fn onramp(
+    onramp_data: web::Json<OnRampData>,
     redis_manager: web::Data<RedisManager>,
 ) -> impl Responder {
-    let message = MessageToEngine::GetDepth {
-        data: depth_data.into_inner(),
+    let message = MessageToEngine::OnRamp {
+        data: onramp_data.into_inner(),
     };
 
     match redis_manager.send_and_await(message).await {

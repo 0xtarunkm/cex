@@ -1,12 +1,12 @@
 use actix_web::{delete, get, post, web, HttpResponse, Responder};
 
 use crate::{
-    models::{CancelOrderData, CreateOrderData, GetOpenOrdersData, MessageToEngine},
-    utils::RedisManager,
+    models::messages::{CancelOrderData, CreateOrderData, GetOpenOrdersData, MessageToEngine},
+    utils::redis_manager::RedisManager,
 };
 
 #[post("/create")]
-pub async fn create_order(
+async fn create_order(
     redis_manager: web::Data<RedisManager>,
     order_data: web::Json<CreateOrderData>,
 ) -> impl Responder {
@@ -21,7 +21,7 @@ pub async fn create_order(
 }
 
 #[delete("/delete")]
-pub async fn delete_order(
+async fn delete_order(
     redis_manager: web::Data<RedisManager>,
     order_data: web::Json<CancelOrderData>,
 ) -> impl Responder {
@@ -36,9 +36,9 @@ pub async fn delete_order(
 }
 
 #[get("/open")]
-pub async fn open(
-    redis_manager: web::Data<RedisManager>,
+async fn open_orders(
     order_data: web::Json<GetOpenOrdersData>,
+    redis_manager: web::Data<RedisManager>,
 ) -> impl Responder {
     let message = MessageToEngine::GetOpenOrders {
         data: order_data.into_inner(),
