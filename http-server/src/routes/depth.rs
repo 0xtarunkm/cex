@@ -1,4 +1,4 @@
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{post, web, HttpResponse, Responder};
 
 use crate::{
     models::messages::{GetDepthData, MessageToEngine},
@@ -12,7 +12,7 @@ async fn get_depth(
 ) -> impl Responder {
     let message = MessageToEngine::GetDepth {
         data: depth_data.into_inner(),
-    };
+    }; 
 
     match redis_manager.send_and_await(message).await {
         Ok(response) => HttpResponse::Ok().json(response),
