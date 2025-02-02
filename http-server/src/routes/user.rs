@@ -1,11 +1,10 @@
 use actix_web::{post, web, HttpResponse, Responder};
 
 use crate::{
-    models::messages::{MessageToEngine, OnRampData},
-    utils::redis_manager::RedisManager,
+    models::{MessageToEngine, OnRampData}, utils::redis_manager::RedisManager
 };
 
-#[post("onramp")]
+#[post("/onramp")]
 async fn onramp(
     onramp_data: web::Json<OnRampData>,
     redis_manager: web::Data<RedisManager>,
@@ -14,7 +13,7 @@ async fn onramp(
         data: onramp_data.into_inner(),
     };
 
-    match redis_manager.send_and_await(message).await {
+    match redis_manager.send_and_wait(message) {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => HttpResponse::InternalServerError().body(format!("Redis error: {}", e)),
     }

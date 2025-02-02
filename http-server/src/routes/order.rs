@@ -1,8 +1,7 @@
 use actix_web::{delete, get, post, web, HttpResponse, Responder};
 
 use crate::{
-    models::messages::{CancelOrderData, CreateOrderData, GetOpenOrdersData, MessageToEngine},
-    utils::redis_manager::RedisManager,
+    models::{CancelOrderData, CreateOrderData, GetOpenOrdersData, MessageToEngine}, utils::redis_manager::RedisManager
 };
 
 #[post("/create")]
@@ -14,7 +13,7 @@ async fn create_order(
         data: order_data.into_inner(),
     };
 
-    match redis_manager.send_and_await(message).await {
+    match redis_manager.send_and_wait(message) {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => HttpResponse::InternalServerError().body(format!("Redis error: {}", e)),
     }
@@ -29,7 +28,7 @@ async fn delete_order(
         data: order_data.into_inner(),
     };
 
-    match redis_manager.send_and_await(message).await {
+    match redis_manager.send_and_wait(message) {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => HttpResponse::InternalServerError().body(format!("Redis error: {}", e)),
     }
@@ -44,7 +43,7 @@ async fn open_orders(
         data: order_data.into_inner(),
     };
 
-    match redis_manager.send_and_await(message).await {
+    match redis_manager.send_and_wait(message) {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => HttpResponse::InternalServerError().body(format!("Redis error: {}", e)),
     }

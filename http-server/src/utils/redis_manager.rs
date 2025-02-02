@@ -1,6 +1,7 @@
-use crate::models::messages::{MessageFromEngine, MessageToEngine};
 use redis::{Client, Commands, RedisResult};
 use uuid::Uuid;
+
+use crate::models::{MessageFromEngine, MessageToEngine};
 
 pub struct RedisManager {
     client: Client,
@@ -12,7 +13,7 @@ impl RedisManager {
         RedisManager { client }
     }
 
-    pub async fn send_and_await(&self, message: MessageToEngine) -> RedisResult<MessageFromEngine> {
+    pub fn send_and_wait(&self, message: MessageToEngine) -> RedisResult<MessageFromEngine> {
         let mut conn = self.client.get_connection().unwrap();
         let client_id = Uuid::new_v4().to_string();
 
@@ -28,6 +29,8 @@ impl RedisManager {
 
         let msg = pubsub.get_message().unwrap();
         let response: String = msg.get_payload()?;
+
+        println!("response: {}", response);
 
         let parsed_response: MessageFromEngine = serde_json::from_str(&response).map_err(|e| {
             redis::RedisError::from((

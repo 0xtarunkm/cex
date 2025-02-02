@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
-use rust_decimal::Decimal;
-
 use crate::models::{DepthPayload, Fill, MatchResult, Order, OrderSide};
+use rust_decimal::Decimal;
+use std::collections::HashMap;
 
 pub struct Orderbook {
     pub bids: Vec<Order>,
@@ -13,7 +11,7 @@ pub struct Orderbook {
 }
 
 impl Orderbook {
-    pub fn new(&self, base_asset: String, quote_asset: String) -> Self {
+    pub fn _new(&self, base_asset: String, quote_asset: String) -> Self {
         Orderbook {
             bids: Vec::new(),
             asks: Vec::new(),
@@ -30,6 +28,8 @@ impl Orderbook {
     pub fn add_order(&mut self, mut order: Order) -> MatchResult {
         match order.side {
             OrderSide::Buy => {
+                self.asks
+                    .sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
                 let match_result = self.match_bid(&order);
                 order.filled = match_result.executed_qty;
 
@@ -40,6 +40,8 @@ impl Orderbook {
                 match_result
             }
             OrderSide::Sell => {
+                self.bids
+                    .sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap());
                 let match_result = self.match_ask(&order);
                 order.filled = match_result.executed_qty;
 
@@ -68,7 +70,7 @@ impl Orderbook {
                     self.asks[i].filled += fill_qty;
 
                     fills.push(Fill {
-                        price: self.asks[i].price.to_string(),
+                        price: self.asks[i].price,
                         quantity: fill_qty,
                         trade_id: self.last_trade_id,
                         other_user_id: self.asks[i].user_id.clone(),
@@ -105,7 +107,7 @@ impl Orderbook {
                     self.bids[i].filled += fill_qty;
 
                     fills.push(Fill {
-                        price: self.bids[i].price.to_string(),
+                        price: self.bids[i].price,
                         quantity: fill_qty,
                         trade_id: self.last_trade_id,
                         other_user_id: self.bids[i].user_id.clone(),
@@ -131,44 +133,30 @@ impl Orderbook {
         let mut asks_obj: HashMap<Decimal, Decimal> = HashMap::new();
 
         for order in &self.bids {
-            *bids_obj.entry(order.price).or_insert(Decimal::new(0, 0)) += order.quantity;
+            let remaining_qty = order.quantity - order.filled;
+            if remaining_qty > Decimal::from(0) {
+                *bids_obj.entry(order.price).or_insert(Decimal::new(0, 0)) += remaining_qty;
+            }
         }
 
         for order in &self.asks {
-            *asks_obj.entry(order.price).or_insert(Decimal::new(0, 0)) += order.quantity;
+            let remaining_qty = order.quantity - order.filled;
+            if remaining_qty > Decimal::from(0) {
+                *asks_obj.entry(order.price).or_insert(Decimal::new(0, 0)) += remaining_qty;
+            }
         }
 
-        let bids: Vec<(String, String)> = bids_obj
+        let bids: Vec<(Decimal, Decimal)> = bids_obj
             .into_iter()
-            .map(|(price, quantity)| (price.to_string(), quantity.to_string()))
+            .map(|(price, quantity)| (price, quantity))
             .collect();
 
-        let asks: Vec<(String, String)> = asks_obj
+        let asks: Vec<(Decimal, Decimal)> = asks_obj
             .into_iter()
-            .map(|(price, quantity)| (price.to_string(), quantity.to_string()))
+            .map(|(price, quantity)| (price, quantity))
             .collect();
 
         DepthPayload { bids, asks }
-    }
-
-    pub fn cancel_bid(&mut self, order: &Order) -> Option<Decimal> {
-        if let Some(index) = self.bids.iter().position(|x| x.order_id == order.order_id) {
-            let price = self.bids[index].price;
-            self.bids.remove(index);
-            Some(price)
-        } else {
-            None
-        }
-    }
-
-    pub fn cancel_ask(&mut self, order: &Order) -> Option<Decimal> {
-        if let Some(index) = self.asks.iter().position(|x| x.order_id == order.order_id) {
-            let price = self.asks[index].price;
-            self.asks.remove(index);
-            Some(price)
-        } else {
-            None
-        }
     }
 
     pub fn get_open_orders(&mut self, user_id: String) -> Vec<Order> {

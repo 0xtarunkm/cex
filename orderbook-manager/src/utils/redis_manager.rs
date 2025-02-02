@@ -1,6 +1,7 @@
 use lazy_static::lazy_static;
 
 use redis::{Client, Commands, Connection, RedisResult};
+use serde_json::Value;
 
 use crate::models::MessageToApi;
 
@@ -30,5 +31,10 @@ impl RedisManager {
         let mut conn = self.get_connection()?;
         let message_json = serde_json::to_string(message).unwrap();
         conn.publish(client_id, message_json)
+    }
+
+    pub fn publish_message(&self, channel: &str, message: &Value) -> RedisResult<()> {
+        let mut conn = self.get_connection()?;
+        conn.publish(channel, message.to_string())
     }
 }
