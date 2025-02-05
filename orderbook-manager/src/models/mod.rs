@@ -129,3 +129,30 @@ pub struct DepthPayload {
     pub bids: Vec<(Decimal, Decimal)>,
     pub asks: Vec<(Decimal, Decimal)>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LeverageTier {
+    pub initial_margin: Decimal,
+    pub maintenance_margin: Decimal,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MarginPosition {
+    pub asset: String,
+    pub size: Decimal,
+    pub entry_price: Decimal,
+    pub leverage: Decimal,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QuoteResponse {
+    pub avg_price: Decimal,
+    pub quantity: Decimal,
+    pub total_cost: Decimal,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+pub enum Side {
+    Buy,
+    Sell,
+}

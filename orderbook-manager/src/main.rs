@@ -4,6 +4,7 @@ use redis::Commands;
 use trade::Engine;
 use utils::redis_manager::RedisManager;
 
+mod constants;
 mod models;
 mod trade;
 mod utils;

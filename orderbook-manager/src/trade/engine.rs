@@ -23,6 +23,11 @@ pub struct Engine {
     balances: Arc<Mutex<HashMap<String, UserBalances>>>,
 }
 
+// TODO: Create a new orderbook for each market on multiple threads
+// TODO: Add the margin system to the engine
+// TODO: Add the liquidation system to the engine
+// TODO: Add the funding system to the engine
+
 impl Engine {
     pub fn new() -> Self {
         let mut orderbook = Vec::new();

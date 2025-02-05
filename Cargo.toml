@@ -1,5 +1,5 @@
 [workspace]
-members = ["http-server", "ws-server", "orderbook-manager"]
+members = ["http-server", "orderbook-manager"]
 
 resolver = "2"
 
