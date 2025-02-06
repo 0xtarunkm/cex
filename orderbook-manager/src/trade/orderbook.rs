@@ -1,10 +1,15 @@
-// use crate::models::{DepthPayload, Fill, MatchResult, Order, OrderSide};
-// use rust_decimal::Decimal;
-// use std::collections::HashMap;
-
 use std::sync::{Arc, Mutex};
 
-use crate::models::Order;
+use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
+
+use crate::{
+    constants::LIQUIDATION_THRESHOLD,
+    models::{
+        CreateOrderPayload, MarginPosition, MarginSide, Order, OrderSide, OrderType, StatusCode,
+        User,
+    },
+};
 
 pub struct Orderbook {
     pub bids: Vec<Order>,
@@ -14,7 +19,7 @@ pub struct Orderbook {
 }
 
 impl Orderbook {
-    pub fn _new(&self, base_asset: String, quote_asset: String) -> Self {
+    pub fn new(base_asset: String, quote_asset: String) -> Self {
         Orderbook {
             bids: Vec::new(),
             asks: Vec::new(),
@@ -27,156 +32,406 @@ impl Orderbook {
         format!("{}_{}", self.base_asset, self.quote_asset)
     }
 
-    pub fn add_order(&mut self, mut order: Order) -> MatchResult {
+    pub fn fill_orders(
+        &mut self,
+        order: &CreateOrderPayload,
+        users: &mut Arc<Mutex<Vec<User>>>,
+    ) -> Decimal {
+        let mut remaining_qty = order.quantity;
+
         match order.side {
             OrderSide::Buy => {
-                self.asks
-                    .sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
-                let match_result = self.match_bid(&order);
-                order.filled = match_result.executed_qty;
+                let mut i = 0;
 
-                if order.filled < order.quantity {
-                    self.bids.push(order);
+                while i < self.asks.len() && remaining_qty > Decimal::ZERO {
+                    if self.asks[i].price > order.price {
+                        break;
+                    }
+
+                    let fill_qty = remaining_qty.min(self.asks[i].quantity);
+                    let price = self.asks[i].price;
+
+                    if matches!(
+                        order.order_type,
+                        OrderType::MarginLong | OrderType::MarginShort
+                    ) {
+                        self.check_and_close_position(
+                            order.user_id.as_str(),
+                            MarginSide::Short,
+                            fill_qty,
+                            price,
+                            users,
+                        );
+                    }
+
+                    self.unlock_balance(&self.asks[i].user_id, "SOL", fill_qty, users);
+                    self.unlock_balance(order.user_id.as_str(), "USDC", fill_qty * price, users);
+
+                    self.flip_balance_update_margin_position(
+                        &self.asks[i].user_id,
+                        order.user_id.as_str(),
+                        price,
+                        fill_qty,
+                        &order.order_type,
+                        order.leverage,
+                        users,
+                    );
+
+                    if self.asks[i].quantity > fill_qty {
+                        self.asks[i].quantity -= fill_qty;
+                        remaining_qty = Decimal::ZERO;
+                    } else {
+                        remaining_qty -= self.asks[i].quantity;
+                        self.asks.remove(i);
+                        continue;
+                    }
+                    i += 1;
                 }
-
-                match_result
             }
             OrderSide::Sell => {
-                self.bids
-                    .sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap());
-                let match_result = self.match_ask(&order);
-                order.filled = match_result.executed_qty;
+                let mut i = 0;
 
-                if order.filled < order.quantity {
-                    self.asks.push(order);
+                while i < self.bids.len() && remaining_qty > Decimal::ZERO {
+                    if self.bids[i].price < order.price {
+                        break;
+                    }
+
+                    let fill_qty = remaining_qty.min(self.bids[i].quantity);
+                    let price = self.bids[i].price;
+
+                    if matches!(
+                        order.order_type,
+                        OrderType::MarginLong | OrderType::MarginShort
+                    ) {
+                        self.check_and_close_position(
+                            order.user_id.as_str(),
+                            MarginSide::Long,
+                            fill_qty,
+                            price,
+                            users,
+                        );
+                    }
+
+                    self.unlock_balance(&self.bids[i].user_id, "USDC", fill_qty * price, users);
+                    self.unlock_balance(order.user_id.as_str(), "SOL", fill_qty, users);
+
+                    self.flip_balance_update_margin_position(
+                        order.user_id.as_str(),
+                        &self.bids[i].user_id,
+                        price,
+                        fill_qty,
+                        &order.order_type,
+                        order.leverage,
+                        users,
+                    );
+
+                    if self.bids[i].quantity > fill_qty {
+                        self.bids[i].quantity -= fill_qty;
+                        remaining_qty = Decimal::ZERO;
+                    } else {
+                        remaining_qty -= self.bids[i].quantity;
+                        self.bids.remove(i);
+                        continue;
+                    }
+                    i += 1;
                 }
+            }
+        }
 
-                match_result
+        remaining_qty
+    }
+
+    pub fn find_and_cancel_order(
+        &mut self,
+        user_id: &str,
+        users: &mut Arc<Mutex<Vec<User>>>,
+    ) -> StatusCode {
+        let mut cancelled = false;
+
+        if let Some(pos) = self.bids.iter().position(|o| o.user_id == user_id) {
+            let order = self.bids.remove(pos);
+            self.unlock_balance(user_id, "USDC", order.quantity * order.price, users);
+            cancelled = true;
+        }
+
+        if !cancelled {
+            if let Some(pos) = self.asks.iter().position(|o| o.user_id == user_id) {
+                let order = self.asks.remove(pos);
+                // Unlock SOL for sell orders
+                self.unlock_balance(user_id, "SOL", order.quantity, users);
+                cancelled = true;
+            }
+        }
+
+        if cancelled {
+            StatusCode::OK
+        } else {
+            StatusCode::NOT_FOUND
+        }
+    }
+
+    pub fn check_and_close_position(
+        &self,
+        user_id: &str,
+        position_side: MarginSide,
+        quantity: Decimal,
+        price: Decimal,
+        users: &mut Arc<Mutex<Vec<User>>>,
+    ) {
+        let mut users_guard = users.lock().unwrap();
+        if let Some(user) = users_guard.iter_mut().find(|u| u.id == user_id) {
+            if let Some(position) = user
+                .margin_positions
+                .iter_mut()
+                .find(|p| p.ticker == "SOL" && p.side == position_side)
+            {
+                let position_data = (
+                    position.entry_price,
+                    position.leverage,
+                    position.side.clone(),
+                );
+                drop(users_guard);
+                let _ = self.close_margin_position(user_id, price, quantity, position_data, users);
+
+                let mut users_guard = users.lock().unwrap();
+                if let Some(user) = users_guard.iter_mut().find(|u| u.id == user_id) {
+                    user.margin_positions.retain(|p| {
+                        !(p.ticker == "SOL" && p.side == position_side && p.size == Decimal::ZERO)
+                    });
+                }
             }
         }
     }
 
-//     fn match_bid(&mut self, order: &Order) -> MatchResult {
-//         let mut fills = Vec::new();
-//         let mut executed_qty = Decimal::from(0);
+    fn close_margin_position(
+        &self,
+        user_id: &str,
+        close_price: Decimal,
+        close_quantity: Decimal,
+        position_data: (Decimal, Decimal, MarginSide),
+        users: &mut Arc<Mutex<Vec<User>>>,
+    ) -> Decimal {
+        let mut users_guard = users.lock().unwrap();
+        let user = users_guard
+            .iter_mut()
+            .find(|u| u.id == user_id.to_string())
+            .unwrap();
 
-//         let mut i = 0;
-//         while i < self.asks.len() {
-//             if self.asks[i].price <= order.price && executed_qty < order.quantity {
-//                 let remaining = order.quantity - executed_qty;
-//                 let fill_qty =
-//                     std::cmp::min(remaining, self.asks[i].quantity - self.asks[i].filled);
+        let (entry_price, leverage, side) = position_data;
 
-//                 if fill_qty > Decimal::from(0) {
-//                     executed_qty += fill_qty;
-//                     self.asks[i].filled += fill_qty;
+        let realized_pnl = match side {
+            MarginSide::Long => (close_price - entry_price) * close_quantity * leverage,
+            MarginSide::Short => (entry_price - close_price) * close_quantity * leverage,
+        };
 
-//                     fills.push(Fill {
-//                         price: self.asks[i].price,
-//                         quantity: fill_qty,
-//                         trade_id: self.last_trade_id,
-//                         other_user_id: self.asks[i].user_id.clone(),
-//                         marker_order_id: self.asks[i].order_id.clone(),
-//                     });
+        user.realized_pnl += realized_pnl;
+        let position = user
+            .margin_positions
+            .iter_mut()
+            .find(|p| p.ticker == "SOL" && p.side == side)
+            .unwrap();
+        position.size -= close_quantity;
 
-//                     self.last_trade_id += 1;
-//                 }
-//             }
-//             i += 1;
-//         }
+        if position.size == Decimal::ZERO {
+            user.margin_used -= (entry_price * close_quantity) / leverage;
+        }
 
-//         self.asks.retain(|ask| ask.filled < ask.quantity);
+        if let Some(usdc_balance) = user.balances.iter_mut().find(|b| b.ticker == "USDC") {
+            usdc_balance.balance += realized_pnl;
+        }
 
-//         MatchResult {
-//             executed_qty,
-//             fills,
-//         }
-//     }
+        realized_pnl
+    }
 
-//     fn match_ask(&mut self, order: &Order) -> MatchResult {
-//         let mut fills = Vec::new();
-//         let mut executed_qty = Decimal::from(0);
+    fn unlock_balance(
+        &self,
+        user_id: &str,
+        ticker: &str,
+        amount: Decimal,
+        users: &mut Arc<Mutex<Vec<User>>>,
+    ) {
+        let mut users_guard = users.lock().unwrap();
+        if let Some(user) = users_guard.iter_mut().find(|u| u.id == user_id) {
+            if let Some(balance) = user.balances.iter_mut().find(|b| b.ticker == ticker) {
+                balance.locked_balance = balance.locked_balance.saturating_sub(amount);
+            }
+        }
+    }
 
-//         let mut i = 0;
-//         while i < self.bids.len() {
-//             if self.bids[i].price >= order.price && executed_qty < order.quantity {
-//                 let remaining = order.quantity - executed_qty;
-//                 let fill_qty =
-//                     std::cmp::min(remaining, self.bids[i].quantity - self.bids[i].filled);
+    fn flip_balance_update_margin_position(
+        &self,
+        seller_id: &str,
+        buyer_id: &str,
+        price: Decimal,
+        quantity: Decimal,
+        order_type: &OrderType,
+        leverage: Option<Decimal>,
+        users: &mut Arc<Mutex<Vec<User>>>,
+    ) {
+        let mut user_guard = users.lock().unwrap();
 
-//                 if fill_qty > Decimal::from(0) {
-//                     executed_qty += fill_qty;
-//                     self.bids[i].filled += fill_qty;
+        if let Some(seller) = user_guard.iter_mut().find(|u| u.id == seller_id) {
+            match order_type {
+                OrderType::Spot => {
+                    if let Some(sol_balance) = seller
+                        .balances
+                        .iter_mut()
+                        .find(|b| b.ticker == "SOL".to_string())
+                    {
+                        sol_balance.balance -= quantity
+                    }
+                    if let Some(usdc_balance) = seller
+                        .balances
+                        .iter_mut()
+                        .find(|b| b.ticker == "USDC".to_string())
+                    {
+                        usdc_balance.balance -= price * quantity
+                    }
+                }
+                OrderType::MarginLong | OrderType::MarginShort => {
+                    drop(user_guard);
+                    self.update_margin_position(
+                        seller_id, price, quantity, order_type, leverage, users,
+                    );
+                    user_guard = users.lock().unwrap();
+                }
+            }
+        }
+        if let Some(buyer) = user_guard.iter_mut().find(|u| u.id == buyer_id) {
+            match order_type {
+                OrderType::Spot => {
+                    if let Some(sol_balance) = buyer
+                        .balances
+                        .iter_mut()
+                        .find(|b| b.ticker == "SOL".to_string())
+                    {
+                        sol_balance.balance += quantity;
+                    }
+                    if let Some(usdc_balance) = buyer
+                        .balances
+                        .iter_mut()
+                        .find(|b| b.ticker == "USDC".to_string())
+                    {
+                        usdc_balance.balance -= price * quantity;
+                    }
+                }
+                OrderType::MarginLong | OrderType::MarginShort => {
+                    drop(user_guard);
+                    self.update_margin_position(
+                        buyer_id, price, quantity, order_type, leverage, users,
+                    );
+                }
+            }
+        }
+    }
 
-//                     fills.push(Fill {
-//                         price: self.bids[i].price,
-//                         quantity: fill_qty,
-//                         trade_id: self.last_trade_id,
-//                         other_user_id: self.bids[i].user_id.clone(),
-//                         marker_order_id: self.bids[i].order_id.clone(),
-//                     });
+    fn update_margin_position(
+        &self,
+        user_id: &str,
+        price: Decimal,
+        quantity: Decimal,
+        order_type: &OrderType,
+        leverage: Option<Decimal>,
+        users: &mut Arc<Mutex<Vec<User>>>,
+    ) {
+        let mut user_guard = users.lock().unwrap();
+        let user = user_guard
+            .iter_mut()
+            .find(|u| u.id == user_id)
+            .expect("User not found");
 
-//                     self.last_trade_id += 1;
-//                 }
-//             }
-//             i += 1;
-//         }
+        match order_type {
+            OrderType::MarginLong => {
+                let leverage = leverage.unwrap_or(dec!(1));
+                let position = user
+                    .margin_positions
+                    .iter_mut()
+                    .find(|p| p.ticker == "SOL".to_string() && matches!(p.side, MarginSide::Long));
 
-//         self.bids.retain(|bid| bid.filled < bid.quantity);
+                if let Some(pos) = position {
+                    let new_size = pos.size + quantity;
+                    let new_entry_price =
+                        (pos.entry_price * pos.size + price * quantity) / new_size;
+                    pos.size = new_size;
+                    pos.entry_price = new_entry_price;
+                    pos.liquidation_price = self.calculate_liquidation_price(
+                        new_entry_price,
+                        leverage,
+                        MarginSide::Long,
+                    );
+                    pos.unrealized_pnl = (price - pos.entry_price) * pos.size * leverage;
+                } else {
+                    user.margin_positions.push(MarginPosition {
+                        ticker: "SOL".to_string(),
+                        size: quantity,
+                        entry_price: price,
+                        liquidation_price: self.calculate_liquidation_price(
+                            price,
+                            leverage,
+                            MarginSide::Long,
+                        ),
+                        leverage,
+                        unrealized_pnl: dec!(0),
+                        side: MarginSide::Long,
+                    });
+                }
+                user.margin_used += (price * quantity) / leverage;
+            }
+            OrderType::MarginShort => {
+                let leverage = leverage.unwrap_or(dec!(1));
+                let position = user
+                    .margin_positions
+                    .iter_mut()
+                    .find(|p| p.ticker == "SOL" && matches!(p.side, MarginSide::Short));
 
-//         MatchResult {
-//             executed_qty,
-//             fills,
-//         }
-//     }
+                if let Some(pos) = position {
+                    let new_size = pos.size + quantity;
+                    let new_entry_price =
+                        (pos.entry_price * pos.size + price * quantity) / new_size;
+                    pos.size = new_size;
+                    pos.entry_price = new_entry_price;
+                    pos.liquidation_price = self.calculate_liquidation_price(
+                        new_entry_price,
+                        leverage,
+                        MarginSide::Short,
+                    );
+                    pos.unrealized_pnl = (pos.entry_price - price) * pos.size * leverage;
+                } else {
+                    user.margin_positions.push(MarginPosition {
+                        ticker: "SOL".to_string(),
+                        size: quantity,
+                        entry_price: price,
+                        liquidation_price: self.calculate_liquidation_price(
+                            price,
+                            leverage,
+                            MarginSide::Short,
+                        ),
+                        leverage,
+                        unrealized_pnl: dec!(0),
+                        side: MarginSide::Short,
+                    });
 
-//     pub fn get_depth(&self) -> DepthPayload {
-//         let mut bids_obj: HashMap<Decimal, Decimal> = HashMap::new();
-//         let mut asks_obj: HashMap<Decimal, Decimal> = HashMap::new();
+                    if let Some(usdc_balance) =
+                        user.balances.iter_mut().find(|b| b.ticker == "USDC")
+                    {
+                        usdc_balance.balance += price * quantity;
+                    }
+                }
+                user.margin_used += (price * quantity) / leverage;
+            }
+            OrderType::Spot => {}
+        }
+    }
 
-//         for order in &self.bids {
-//             let remaining_qty = order.quantity - order.filled;
-//             if remaining_qty > Decimal::from(0) {
-//                 *bids_obj.entry(order.price).or_insert(Decimal::new(0, 0)) += remaining_qty;
-//             }
-//         }
-
-//         for order in &self.asks {
-//             let remaining_qty = order.quantity - order.filled;
-//             if remaining_qty > Decimal::from(0) {
-//                 *asks_obj.entry(order.price).or_insert(Decimal::new(0, 0)) += remaining_qty;
-//             }
-//         }
-
-//         let bids: Vec<(Decimal, Decimal)> = bids_obj
-//             .into_iter()
-//             .map(|(price, quantity)| (price, quantity))
-//             .collect();
-
-//         let asks: Vec<(Decimal, Decimal)> = asks_obj
-//             .into_iter()
-//             .map(|(price, quantity)| (price, quantity))
-//             .collect();
-
-//         DepthPayload { bids, asks }
-//     }
-
-//     pub fn get_open_orders(&mut self, user_id: String) -> Vec<Order> {
-//         let mut orders: Vec<Order> = self
-//             .asks
-//             .iter()
-//             .filter(|x| x.user_id == user_id)
-//             .cloned()
-//             .collect();
-
-//         let bids: Vec<Order> = self
-//             .bids
-//             .iter()
-//             .filter(|x| x.user_id == user_id)
-//             .cloned()
-//             .collect();
-
-//         orders.extend(bids);
-//         orders
-//     }
+    fn calculate_liquidation_price(
+        &self,
+        entry_price: Decimal,
+        leverage: Decimal,
+        side: MarginSide,
+    ) -> Decimal {
+        match side {
+            MarginSide::Long => entry_price * (dec!(1) - LIQUIDATION_THRESHOLD / leverage),
+            MarginSide::Short => entry_price * (dec!(1) + LIQUIDATION_THRESHOLD / leverage),
+        }
+    }
 }

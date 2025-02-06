@@ -1,7 +1,8 @@
 use actix_web::{post, web, HttpResponse, Responder};
 
 use crate::{
-    models::{MessageToEngine, OnRampData}, utils::redis_manager::RedisManager
+    models::{MessageToEngine, OnRampData},
+    utils::redis_manager::RedisManager,
 };
 
 #[post("/onramp")]

@@ -1,7 +1,8 @@
 use actix_web::{delete, get, post, web, HttpResponse, Responder};
 
 use crate::{
-    models::{CancelOrderData, CreateOrderData, GetOpenOrdersData, MessageToEngine}, utils::redis_manager::RedisManager
+    models::{CancelOrderData, CreateOrderData, GetOpenOrdersData, MessageToEngine},
+    utils::redis_manager::RedisManager,
 };
 
 #[post("/create")]

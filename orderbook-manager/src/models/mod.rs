@@ -15,24 +15,25 @@ pub struct Order {
     pub price: Decimal,
     pub quantity: Decimal,
     pub order_type: OrderType,
-    pub leverage: Option<Decimal>
+    pub leverage: Option<Decimal>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum OrderType {
     MarginLong,
     MarginShort,
-    Spot
+    Spot,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateOrderPayload {
     pub user_id: String,
+    pub market: String,
     pub price: Decimal,
     pub quantity: Decimal,
     pub side: OrderSide,
     pub order_type: OrderType,
-    pub leverage: Option<Decimal>
+    pub leverage: Option<Decimal>,
 }
 
 // USER
@@ -44,14 +45,14 @@ pub struct User {
     pub margin_enabled: bool,
     pub margin_used: Decimal,
     pub max_leverage: Decimal,
-    pub realized_pnl: Decimal
+    pub realized_pnl: Decimal,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Balances {
     pub ticker: String,
     pub balance: Decimal,
-    pub locked_balance: Decimal
+    pub locked_balance: Decimal,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,15 +60,16 @@ pub struct MarginPosition {
     pub ticker: String,
     pub size: Decimal,
     pub entry_price: Decimal,
+    pub liquidation_price: Decimal,
     pub leverage: Decimal,
     pub unrealized_pnl: Decimal,
-    pub side: MarginSide
+    pub side: MarginSide,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
 pub enum MarginSide {
     Long,
-    Short
+    Short,
 }
 
 #[derive(Debug, Serialize)]
@@ -95,7 +97,7 @@ pub struct AssetBalance {
 #[serde(tag = "type")]
 pub enum MessageFromApi {
     #[serde(rename = "CREATE_ORDER")]
-    CreateOrder { data: CreateOrderData },
+    CreateOrder { data: CreateOrderPayload },
     #[serde(rename = "CANCEL_ORDER")]
     CancelOrder { data: CancelOrderData },
     #[serde(rename = "ON_RAMP")]
@@ -114,18 +116,19 @@ pub struct CreateOrderData {
     pub quantity: Decimal,
     pub side: OrderSide,
     pub order_type: OrderType,
-    pub leverage: Option<Decimal>
+    pub leverage: Option<Decimal>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum OrderSide {
     Buy,
-    Sell
+    Sell,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CancelOrderData {
     pub order_id: String,
+    pub user_id: String,
     pub market: String,
 }
 
@@ -164,14 +167,17 @@ pub enum MessageToApi {
 pub struct OrderPlacedPayload {
     pub order_id: String,
     pub executed_qty: Decimal,
-    pub fills: Vec<Fill>,
+}
+
+pub enum StatusCode {
+    OK,
+    NOT_FOUND,
 }
 
 #[derive(Debug, Serialize)]
 pub struct OrderCancelledPayload {
     pub order_id: String,
-    pub executed_qty: Decimal,
-    pub remaining_qty: Decimal,
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
