@@ -7,20 +7,67 @@ pub struct IncomingMessage {
     pub message: MessageFromApi,
 }
 
+// ORDERS
 #[derive(Debug, Clone, Serialize)]
 pub struct Order {
+    pub id: String,
+    pub user_id: String,
     pub price: Decimal,
     pub quantity: Decimal,
-    pub filled: Decimal,
-    pub side: OrderSide,
-    pub user_id: String,
-    pub order_id: String,
+    pub order_type: OrderType,
+    pub leverage: Option<Decimal>
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum OrderSide {
-    Buy,
-    Sell,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum OrderType {
+    MarginLong,
+    MarginShort,
+    Spot
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateOrderPayload {
+    pub user_id: String,
+    pub price: Decimal,
+    pub quantity: Decimal,
+    pub side: OrderSide,
+    pub order_type: OrderType,
+    pub leverage: Option<Decimal>
+}
+
+// USER
+#[derive(Debug, Serialize, Deserialize)]
+pub struct User {
+    pub id: String,
+    pub balances: Vec<Balances>,
+    pub margin_positions: Vec<MarginPosition>,
+    pub margin_enabled: bool,
+    pub margin_used: Decimal,
+    pub max_leverage: Decimal,
+    pub realized_pnl: Decimal
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Balances {
+    pub ticker: String,
+    pub balance: Decimal,
+    pub locked_balance: Decimal
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MarginPosition {
+    pub ticker: String,
+    pub size: Decimal,
+    pub entry_price: Decimal,
+    pub leverage: Decimal,
+    pub unrealized_pnl: Decimal,
+    pub side: MarginSide
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum MarginSide {
+    Long,
+    Short
 }
 
 #[derive(Debug, Serialize)]
@@ -61,11 +108,19 @@ pub enum MessageFromApi {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateOrderData {
+    pub user_id: String,
     pub market: String,
     pub price: Decimal,
     pub quantity: Decimal,
     pub side: OrderSide,
-    pub user_id: String,
+    pub order_type: OrderType,
+    pub leverage: Option<Decimal>
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum OrderSide {
+    Buy,
+    Sell
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -136,13 +191,13 @@ pub struct LeverageTier {
     pub maintenance_margin: Decimal,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MarginPosition {
-    pub asset: String,
-    pub size: Decimal,
-    pub entry_price: Decimal,
-    pub leverage: Decimal,
-}
+// #[derive(Debug, Serialize, Deserialize)]
+// pub struct MarginPosition {
+//     pub asset: String,
+//     pub size: Decimal,
+//     pub entry_price: Decimal,
+//     pub leverage: Decimal,
+// }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QuoteResponse {
