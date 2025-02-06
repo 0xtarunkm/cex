@@ -7,8 +7,7 @@ use uuid::Uuid;
 use crate::{
     constants::MAX_LEVERAGE,
     models::{
-        Balances, CreateOrderPayload, Depth, GetQuoteResponse, MessageFromApi, MessageToApi, Order,
-        OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType, StatusCode, User,
+        Balances, CreateOrderPayload, GetQuoteResponse, MessageFromApi, MessageToApi, OpenOrdersPayload, Order, OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType, StatusCode, User
     },
     utils::redis_manager::RedisManager,
 };
@@ -128,7 +127,7 @@ impl Engine {
 
                         let _ = redis_manager.send_to_api(&client_id, &message);
                     }
-                    StatusCode::NOT_FOUND => {
+                    StatusCode::NotFound => {
                         let redis_manager = RedisManager::instance();
                         let message = MessageToApi::OrderCancelled {
                             payload: OrderCancelledPayload {
@@ -175,7 +174,33 @@ impl Engine {
 
                 let _ = redis_manager.send_to_api(&client_id, &message);
             }
-            _ => {}
+            MessageFromApi::GetOpenOrders { data } => {
+                let mut orderbook_guard = self.orderbooks.lock().unwrap();
+                let orderbook = orderbook_guard.iter_mut().find(|o| o.quote_asset == data.market).expect("No orderbook found");
+
+                let mut open_orders = Vec::new();
+
+                for bid in orderbook.bids.iter() {
+                    if bid.user_id == data.user_id {
+                        open_orders.push(bid.clone());
+                    }
+                }
+
+                for ask in orderbook.asks.iter() {
+                    if ask.user_id == data.user_id {
+                        open_orders.push(ask.clone());
+                    }
+                }
+            
+                let redis_manager = RedisManager::instance();
+                let message = MessageToApi::OpenOrders { 
+                    payload: OpenOrdersPayload { 
+                        open_orders 
+                    } 
+                };
+            
+                let _ = redis_manager.send_to_api(&client_id, &message);
+            }
         }
     }
 

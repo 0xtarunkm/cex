@@ -21,17 +21,13 @@ pub struct Orderbook {
 }
 
 impl Orderbook {
-    pub fn new(base_asset: String, quote_asset: String) -> Self {
+    pub fn _new(base_asset: String, quote_asset: String) -> Self {
         Orderbook {
             bids: Vec::new(),
             asks: Vec::new(),
             base_asset,
             quote_asset,
         }
-    }
-
-    pub fn ticker(&self) -> String {
-        format!("{}_{}", self.base_asset, self.quote_asset)
     }
 
     pub fn fill_orders(
@@ -159,7 +155,6 @@ impl Orderbook {
         if !cancelled {
             if let Some(pos) = self.asks.iter().position(|o| o.user_id == user_id) {
                 let order = self.asks.remove(pos);
-                // Unlock SOL for sell orders
                 self.unlock_balance(user_id, "SOL", order.quantity, users);
                 cancelled = true;
             }
@@ -168,7 +163,7 @@ impl Orderbook {
         if cancelled {
             StatusCode::OK
         } else {
-            StatusCode::NOT_FOUND
+            StatusCode::NotFound
         }
     }
 

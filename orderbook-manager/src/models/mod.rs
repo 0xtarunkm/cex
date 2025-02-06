@@ -95,18 +95,6 @@ pub struct Fill {
     pub marker_order_id: String,
 }
 
-#[derive(Debug)]
-pub struct MatchResult {
-    pub executed_qty: Decimal,
-    pub fills: Vec<Fill>,
-}
-
-#[derive(Debug)]
-pub struct AssetBalance {
-    pub available: Decimal,
-    pub locked: Decimal,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum MessageFromApi {
@@ -114,8 +102,6 @@ pub enum MessageFromApi {
     CreateOrder { data: CreateOrderPayload },
     #[serde(rename = "CANCEL_ORDER")]
     CancelOrder { data: CancelOrderData },
-    #[serde(rename = "ON_RAMP")]
-    OnRamp { data: OnRampData },
     #[serde(rename = "GET_DEPTH")]
     GetDepth { data: GetDepthData },
     #[serde(rename = "GET_OPEN_ORDERS")]
@@ -203,7 +189,7 @@ pub struct OrderPlacedPayload {
 
 pub enum StatusCode {
     OK,
-    NOT_FOUND,
+    NotFound
 }
 
 #[derive(Debug, Serialize)]
