@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +36,18 @@ pub struct CreateOrderPayload {
     pub side: OrderSide,
     pub order_type: OrderType,
     pub leverage: Option<Decimal>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OrderDetails {
+    pub type_: OrderSide,
+    pub quantity: Decimal,
+}
+
+// DEPTH
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Depth {
+    pub orders: HashMap<Decimal, OrderDetails>,
 }
 
 // USER
@@ -106,6 +120,8 @@ pub enum MessageFromApi {
     GetDepth { data: GetDepthData },
     #[serde(rename = "GET_OPEN_ORDERS")]
     GetOpenOrders { data: GetOpenOrdersData },
+    #[serde(rename = "GET_QUOTE")]
+    GetQuote { data: GetQuoteRequest },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -150,6 +166,20 @@ pub struct GetOpenOrdersData {
     pub market: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetQuoteRequest {
+    pub market: String,
+    pub side: OrderSide,
+    pub quantity: Decimal,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetQuoteResponse {
+    pub avg_price: Decimal,
+    pub quantity: Decimal,
+    pub total_cost: Decimal,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "type")]
 pub enum MessageToApi {
@@ -160,7 +190,9 @@ pub enum MessageToApi {
     #[serde(rename = "OPEN_ORDERS")]
     OpenOrders { payload: OpenOrdersPayload },
     #[serde(rename = "DEPTH")]
-    Depth { payload: DepthPayload },
+    Depth { payload: Depth },
+    #[serde(rename = "SEND_QUOTE")]
+    Quote { payload: GetQuoteResponse },
 }
 
 #[derive(Debug, Serialize)]

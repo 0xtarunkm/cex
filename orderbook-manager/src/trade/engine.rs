@@ -7,8 +7,8 @@ use uuid::Uuid;
 use crate::{
     constants::MAX_LEVERAGE,
     models::{
-        Balances, CreateOrderPayload, MessageFromApi, MessageToApi, Order, OrderCancelledPayload,
-        OrderPlacedPayload, OrderSide, OrderType, StatusCode, User,
+        Balances, CreateOrderPayload, Depth, GetQuoteResponse, MessageFromApi, MessageToApi, Order,
+        OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType, StatusCode, User,
     },
     utils::redis_manager::RedisManager,
 };
@@ -140,6 +140,40 @@ impl Engine {
                         let _ = redis_manager.send_to_api(&client_id, &message);
                     }
                 }
+            }
+            MessageFromApi::GetQuote { data } => {
+                let mut orderbook_guard = self.orderbooks.lock().unwrap();
+                let orderbook = orderbook_guard
+                    .iter_mut()
+                    .find(|o| o.quote_asset == data.market)
+                    .expect("No orderbook found");
+
+                let result = orderbook.get_quote_detail(data.quantity, data.side);
+
+                let redis_manager = RedisManager::instance();
+                let message = MessageToApi::Quote {
+                    payload: GetQuoteResponse {
+                        avg_price: result.avg_price,
+                        quantity: result.quantity,
+                        total_cost: result.total_cost,
+                    },
+                };
+
+                let _ = redis_manager.send_to_api(&client_id, &message);
+            }
+            MessageFromApi::GetDepth { data } => {
+                let mut orderbook_guard = self.orderbooks.lock().unwrap();
+                let orderbook = orderbook_guard
+                    .iter_mut()
+                    .find(|o| o.quote_asset == data.market)
+                    .expect("No orderbook found");
+
+                let result = orderbook.get_depth();
+
+                let redis_manager = RedisManager::instance();
+                let message = MessageToApi::Depth { payload: result };
+
+                let _ = redis_manager.send_to_api(&client_id, &message);
             }
             _ => {}
         }

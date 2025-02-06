@@ -1,13 +1,15 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 
+use crate::models::{Depth, OrderDetails};
 use crate::{
     constants::LIQUIDATION_THRESHOLD,
     models::{
-        CreateOrderPayload, MarginPosition, MarginSide, Order, OrderSide, OrderType, StatusCode,
-        User,
+        CreateOrderPayload, GetQuoteResponse, MarginPosition, MarginSide, Order, OrderSide,
+        OrderType, StatusCode, User,
     },
 };
 
@@ -433,5 +435,91 @@ impl Orderbook {
             MarginSide::Long => entry_price * (dec!(1) - LIQUIDATION_THRESHOLD / leverage),
             MarginSide::Short => entry_price * (dec!(1) + LIQUIDATION_THRESHOLD / leverage),
         }
+    }
+
+    pub fn get_quote_detail(&self, quantity: Decimal, side: OrderSide) -> GetQuoteResponse {
+        let mut remaining_qty = quantity;
+        let mut total_cost = Decimal::from(0);
+        let mut weighted_avg_price = Decimal::from(0);
+
+        match side {
+            OrderSide::Buy => {
+                for ask in self.asks.iter() {
+                    if remaining_qty == Decimal::from(0) {
+                        break;
+                    }
+
+                    if remaining_qty > ask.quantity {
+                        total_cost += ask.price * ask.quantity;
+                        remaining_qty -= ask.quantity;
+                    } else {
+                        total_cost += ask.price * remaining_qty;
+                        remaining_qty = Decimal::from(0);
+                        break;
+                    }
+                }
+            }
+            OrderSide::Sell => {
+                for bid in self.bids.iter() {
+                    if remaining_qty == Decimal::from(0) {
+                        break;
+                    }
+                    if remaining_qty >= bid.quantity {
+                        total_cost += bid.price * bid.quantity;
+                        remaining_qty -= bid.quantity;
+                    } else {
+                        total_cost += bid.price * remaining_qty;
+                        remaining_qty = Decimal::from(0);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if remaining_qty < quantity {
+            weighted_avg_price = total_cost / (quantity - remaining_qty);
+        }
+
+        GetQuoteResponse {
+            avg_price: weighted_avg_price,
+            quantity,
+            total_cost,
+        }
+    }
+
+    pub fn get_depth(&self) -> Depth {
+        let mut depth: Depth = Depth {
+            orders: HashMap::new(),
+        };
+
+        for bid in self.bids.iter() {
+            if depth.orders.contains_key(&bid.price) {
+                depth.orders.get_mut(&bid.price).unwrap().quantity += bid.quantity;
+            } else {
+                depth.orders.insert(
+                    bid.price,
+                    OrderDetails {
+                        type_: OrderSide::Buy,
+                        quantity: bid.quantity,
+                    },
+                );
+            }
+        }
+
+        for ask in self.asks.iter() {
+            if depth.orders.contains_key(&ask.price) {
+                depth.orders.get_mut(&ask.price).unwrap().quantity += ask.quantity;
+            } else {
+                depth.orders.insert(
+                    ask.price,
+                    OrderDetails {
+                        type_: OrderSide::Sell,
+                        quantity: ask.quantity,
+                    },
+                );
+            }
+        }
+
+        depth
     }
 }
