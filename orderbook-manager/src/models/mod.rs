@@ -48,6 +48,7 @@ pub struct OrderDetails {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Depth {
     pub orders: HashMap<Decimal, OrderDetails>,
+    pub market: String,
 }
 
 // USER
@@ -101,11 +102,11 @@ pub enum MessageFromApi {
     #[serde(rename = "CREATE_ORDER")]
     CreateOrder { data: CreateOrderPayload },
     #[serde(rename = "CANCEL_ORDER")]
-    CancelOrder { data: CancelOrderData },
+    CancelOrder { data: CancelOrderPayload },
     #[serde(rename = "GET_DEPTH")]
-    GetDepth { data: GetDepthData },
+    GetDepth { data: GetDepthPayload },
     #[serde(rename = "GET_OPEN_ORDERS")]
-    GetOpenOrders { data: GetOpenOrdersData },
+    GetOpenOrders { data: GetOpenOrdersPayload },
     #[serde(rename = "GET_QUOTE")]
     GetQuote { data: GetQuoteRequest },
 }
@@ -128,7 +129,7 @@ pub enum OrderSide {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CancelOrderData {
+pub struct CancelOrderPayload {
     pub order_id: String,
     pub user_id: String,
     pub market: String,
@@ -142,12 +143,12 @@ pub struct OnRampData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct GetDepthData {
+pub struct GetDepthPayload {
     pub market: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct GetOpenOrdersData {
+pub struct GetOpenOrdersPayload {
     pub user_id: String,
     pub market: String,
 }
@@ -189,7 +190,7 @@ pub struct OrderPlacedPayload {
 
 pub enum StatusCode {
     OK,
-    NotFound
+    NotFound,
 }
 
 #[derive(Debug, Serialize)]

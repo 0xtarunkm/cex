@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -7,7 +10,9 @@ use uuid::Uuid;
 use crate::{
     constants::MAX_LEVERAGE,
     models::{
-        Balances, CreateOrderPayload, GetQuoteResponse, MessageFromApi, MessageToApi, OpenOrdersPayload, Order, OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType, StatusCode, User
+        Balances, CreateOrderPayload, GetQuoteResponse, MessageFromApi, MessageToApi,
+        OpenOrdersPayload, Order, OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType,
+        StatusCode, User,
     },
     utils::redis_manager::RedisManager,
 };
@@ -15,19 +20,29 @@ use crate::{
 use super::Orderbook;
 
 pub struct Engine {
-    orderbooks: Arc<Mutex<Vec<Orderbook>>>,
+    orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<Orderbook>>>>>,
     users: Arc<Mutex<Vec<User>>>,
 }
 
 impl Engine {
     pub fn new() -> Self {
-        let mut orderbook = Vec::new();
-        orderbook.push(Orderbook {
-            bids: Vec::new(),
-            asks: Vec::new(),
-            base_asset: "SOL".to_string(),
-            quote_asset: "USDC".to_string(),
-        });
+        let mut orderbooks = HashMap::new();
+
+        let markets = vec![("SOL", "USDC"), ("BTC", "USDC"), ("ETH", "USDC")];
+
+        for (base, quote) in markets {
+            let orderbook = Orderbook {
+                bids: Vec::new(),
+                asks: Vec::new(),
+                base_asset: base.to_string(),
+                quote_asset: quote.to_string(),
+            };
+            orderbooks.insert(
+                format!("{}_{}", base, quote),
+                Arc::new(Mutex::new(orderbook)),
+            );
+        }
+
         let users = vec![
             User {
                 id: "1".to_string(),
@@ -50,7 +65,7 @@ impl Engine {
                 realized_pnl: Decimal::from(0),
             },
             User {
-                id: "1".to_string(),
+                id: "2".to_string(),
                 balances: vec![
                     Balances {
                         ticker: "SOL".to_string(),
@@ -72,7 +87,7 @@ impl Engine {
         ];
 
         Engine {
-            orderbooks: Arc::new(Mutex::new(orderbook)),
+            orderbooks: Arc::new(Mutex::new(orderbooks)),
             users: Arc::new(Mutex::new(users)),
         }
     }
@@ -109,13 +124,22 @@ impl Engine {
                 }
             }
             MessageFromApi::CancelOrder { data } => {
-                let mut orderbook_guard = self.orderbooks.lock().unwrap();
-                let orderbook = orderbook_guard
-                    .iter_mut()
-                    .find(|o| o.quote_asset == data.market)
-                    .expect("No orderbook found");
+                let orderbook = {
+                    let orderbooks = self.orderbooks.lock().unwrap();
+                    Arc::clone(
+                        orderbooks
+                            .get(&data.market)
+                            .ok_or("Market not found")
+                            .unwrap(),
+                    )
+                };
 
-                match orderbook.find_and_cancel_order(data.user_id.as_str(), &mut self.users) {
+                let status = {
+                    let mut orderbook_guard = orderbook.lock().unwrap();
+                    orderbook_guard.find_and_cancel_order(data.user_id.as_str(), &mut self.users)
+                };
+
+                match status {
                     StatusCode::OK => {
                         let redis_manager = RedisManager::instance();
                         let message = MessageToApi::OrderCancelled {
@@ -141,13 +165,16 @@ impl Engine {
                 }
             }
             MessageFromApi::GetQuote { data } => {
-                let mut orderbook_guard = self.orderbooks.lock().unwrap();
-                let orderbook = orderbook_guard
-                    .iter_mut()
-                    .find(|o| o.quote_asset == data.market)
-                    .expect("No orderbook found");
+                let orderbooks = self.orderbooks.lock().unwrap();
+                let orderbook = orderbooks
+                    .get(&data.market)
+                    .ok_or("Market not found")
+                    .unwrap();
 
-                let result = orderbook.get_quote_detail(data.quantity, data.side);
+                let result = orderbook
+                    .lock()
+                    .unwrap()
+                    .get_quote_detail(data.quantity, data.side);
 
                 let redis_manager = RedisManager::instance();
                 let message = MessageToApi::Quote {
@@ -161,13 +188,19 @@ impl Engine {
                 let _ = redis_manager.send_to_api(&client_id, &message);
             }
             MessageFromApi::GetDepth { data } => {
-                let mut orderbook_guard = self.orderbooks.lock().unwrap();
-                let orderbook = orderbook_guard
-                    .iter_mut()
-                    .find(|o| o.quote_asset == data.market)
-                    .expect("No orderbook found");
+                let orderbooks = self.orderbooks.lock().unwrap();
+                let orderbook = orderbooks
+                    .get(&data.market)
+                    .ok_or("Market not found")
+                    .unwrap();
 
-                let result = orderbook.get_depth();
+                let orderbook_guard = orderbook.lock().unwrap();
+                println!("Market: {}", data.market);
+                println!("Number of bids: {}", orderbook_guard.bids.len());
+                println!("Number of asks: {}", orderbook_guard.asks.len());
+                
+                let result = orderbook_guard.get_depth();
+                println!("Depth result orders: {}", result.orders.len());
 
                 let redis_manager = RedisManager::instance();
                 let message = MessageToApi::Depth { payload: result };
@@ -175,30 +208,31 @@ impl Engine {
                 let _ = redis_manager.send_to_api(&client_id, &message);
             }
             MessageFromApi::GetOpenOrders { data } => {
-                let mut orderbook_guard = self.orderbooks.lock().unwrap();
-                let orderbook = orderbook_guard.iter_mut().find(|o| o.quote_asset == data.market).expect("No orderbook found");
+                let orderbooks = self.orderbooks.lock().unwrap();
+                let orderbook = orderbooks
+                    .get(&data.market)
+                    .ok_or("Market not found")
+                    .unwrap();
 
                 let mut open_orders = Vec::new();
 
-                for bid in orderbook.bids.iter() {
+                for bid in orderbook.lock().unwrap().bids.iter() {
                     if bid.user_id == data.user_id {
                         open_orders.push(bid.clone());
                     }
                 }
 
-                for ask in orderbook.asks.iter() {
+                for ask in orderbook.lock().unwrap().asks.iter() {
                     if ask.user_id == data.user_id {
                         open_orders.push(ask.clone());
                     }
                 }
-            
+
                 let redis_manager = RedisManager::instance();
-                let message = MessageToApi::OpenOrders { 
-                    payload: OpenOrdersPayload { 
-                        open_orders 
-                    } 
+                let message = MessageToApi::OpenOrders {
+                    payload: OpenOrdersPayload { open_orders },
                 };
-            
+
                 let _ = redis_manager.send_to_api(&client_id, &message);
             }
         }
@@ -231,14 +265,19 @@ impl Engine {
         }
 
         // fill order
-        let mut orderbook_guard = self.orderbooks.lock().unwrap();
-        let orderbook = orderbook_guard
-            .iter_mut()
-            .find(|o| o.quote_asset == market.to_string())
-            .expect("No orderbook found");
+        let orderbooks = self.orderbooks.lock().unwrap();
+        let orderbook = orderbooks
+            .get(&payload.market)
+            .ok_or("Market not found")
+            .unwrap();
 
         // fill orders
-        let remaining_qty = orderbook.fill_orders(payload, &mut self.users);
+        let remaining_qty = orderbook
+            .lock()
+            .unwrap()
+            .fill_orders(payload, &mut self.users);
+
+        println!("create order orderbook {}", orderbook.lock().unwrap().quote_asset);
 
         if remaining_qty == Decimal::from(0) {
             return Ok((payload.quantity, order_id.clone()));
@@ -246,23 +285,23 @@ impl Engine {
 
         match payload.side {
             OrderSide::Buy => {
-                let mut bids = orderbook.bids.clone();
-                bids.push(Order {
+                let mut orderbook_guard = orderbook.lock().unwrap();
+                orderbook_guard.bids.push(Order {
                     id: order_id.clone(),
                     user_id: payload.user_id.clone(),
                     price: payload.price,
-                    quantity: payload.quantity,
+                    quantity: remaining_qty,
                     order_type: payload.order_type.clone(),
                     leverage: payload.leverage,
                 });
             }
             OrderSide::Sell => {
-                let mut asks = orderbook.asks.clone();
-                asks.push(Order {
+                let mut orderbook_guard = orderbook.lock().unwrap();
+                orderbook_guard.asks.push(Order {
                     id: order_id.clone(),
                     user_id: payload.user_id.clone(),
                     price: payload.price,
-                    quantity: payload.quantity,
+                    quantity: remaining_qty,
                     order_type: payload.order_type.clone(),
                     leverage: payload.leverage,
                 });

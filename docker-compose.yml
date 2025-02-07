@@ -1,15 +1,15 @@
 version: "3.8"
 
 services:
-  # postgres:
-  #   image: timescale/timescaledb-ha:pg17
-  #   container_name: timescaledb
-  #   ports:
-  #     - "5432:5432"
-  #   environment:
-  #     POSTGRES_USER: admin
-  #     POSTGRES_PASSWORD: admin123
-  #     POSTGRES_DB: cex-db
+  postgres:
+    image: postgres
+    container_name: database
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: cex-db
   redis:
     image: redis:latest
     container_name: redis

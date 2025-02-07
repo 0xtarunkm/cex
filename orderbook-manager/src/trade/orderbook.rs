@@ -485,9 +485,19 @@ impl Orderbook {
     pub fn get_depth(&self) -> Depth {
         let mut depth: Depth = Depth {
             orders: HashMap::new(),
+            market: format!("{}_{}", self.base_asset, self.quote_asset),
         };
 
-        for bid in self.bids.iter() {
+        // Sort bids in descending order (highest price first)
+        let mut sorted_bids: Vec<_> = self.bids.iter().collect();
+        sorted_bids.sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap());
+
+        // Sort asks in ascending order (lowest price first)
+        let mut sorted_asks: Vec<_> = self.asks.iter().collect();
+        sorted_asks.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
+
+        // Process bids
+        for bid in sorted_bids {
             if depth.orders.contains_key(&bid.price) {
                 depth.orders.get_mut(&bid.price).unwrap().quantity += bid.quantity;
             } else {
@@ -501,7 +511,8 @@ impl Orderbook {
             }
         }
 
-        for ask in self.asks.iter() {
+        // Process asks
+        for ask in sorted_asks {
             if depth.orders.contains_key(&ask.price) {
                 depth.orders.get_mut(&ask.price).unwrap().quantity += ask.quantity;
             } else {

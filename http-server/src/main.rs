@@ -22,13 +22,11 @@ async fn main() -> std::io::Result<()> {
                 .service(
                     web::scope("/order")
                         .service(routes::create_order)
-                        .service(routes::delete_order)
-                        .service(routes::open_orders),
+                        .service(routes::cancel_order)
+                        .service(routes::open_orders)
+                        .service(routes::get_quote),
                 )
                 .service(web::scope("/depth").service(routes::get_depth))
-                .service(web::scope("/klines").service(routes::get_klines))
-                .service(web::scope("/tickers").service(routes::get_tickers))
-                .service(web::scope("/user").service(routes::onramp)),
         )
     })
     .workers(4)

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -5,29 +7,39 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type")]
 pub enum MessageToEngine {
     #[serde(rename = "CREATE_ORDER")]
-    CreateOrder { data: CreateOrderData },
+    CreateOrder { data: CreateOrderPayload },
     #[serde(rename = "CANCEL_ORDER")]
-    CancelOrder { data: CancelOrderData },
-    #[serde(rename = "ON_RAMP")]
-    OnRamp { data: OnRampData },
+    CancelOrder { data: CancelOrderPayload },
     #[serde(rename = "GET_DEPTH")]
-    GetDepth { data: GetDepthData },
+    GetDepth { data: GetDepthPayload },
     #[serde(rename = "GET_OPEN_ORDERS")]
-    GetOpenOrders { data: GetOpenOrdersData },
+    GetOpenOrders { data: GetOpenOrdersPayload },
+    #[serde(rename = "GET_QUOTE")]
+    GetQuote { data: GetQuoteRequest },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CreateOrderData {
+pub struct CreateOrderPayload {
+    pub user_id: String,
     pub market: String,
     pub price: Decimal,
     pub quantity: Decimal,
     pub side: OrderSide,
-    pub user_id: String,
+    pub order_type: OrderType,
+    pub leverage: Option<Decimal>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum OrderType {
+    MarginLong,
+    MarginShort,
+    Spot,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CancelOrderData {
+pub struct CancelOrderPayload {
     pub order_id: String,
+    pub user_id: String,
     pub market: String,
 }
 
@@ -39,14 +51,21 @@ pub struct OnRampData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct GetDepthData {
+pub struct GetDepthPayload {
     pub market: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct GetOpenOrdersData {
+pub struct GetOpenOrdersPayload {
     pub user_id: String,
     pub market: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetQuoteRequest {
+    pub market: String,
+    pub side: OrderSide,
+    pub quantity: Decimal,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -77,17 +96,21 @@ pub struct OpenOrdersPayload {
     pub open_orders: Vec<Order>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OrderDetails {
+    pub type_: OrderSide,
+    pub quantity: Decimal,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DepthPayload {
-    pub bids: Vec<(Decimal, Decimal)>,
-    pub asks: Vec<(Decimal, Decimal)>,
+    pub orders: HashMap<Decimal, OrderDetails>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OrderPlacedPayload {
     pub order_id: String,
     pub executed_qty: Decimal,
-    pub fills: Vec<Fill>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

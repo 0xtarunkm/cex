@@ -1,13 +1,13 @@
 use actix_web::{post, web, HttpResponse, Responder};
 
 use crate::{
-    models::{GetDepthData, MessageToEngine},
+    models::{GetDepthPayload, MessageToEngine},
     utils::redis_manager::RedisManager,
 };
 
 #[post("/")]
 async fn get_depth(
-    depth_data: web::Json<GetDepthData>,
+    depth_data: web::Json<GetDepthPayload>,
     redis_manager: web::Data<RedisManager>,
 ) -> impl Responder {
     let message = MessageToEngine::GetDepth {
