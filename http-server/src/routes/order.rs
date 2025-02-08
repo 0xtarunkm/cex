@@ -1,7 +1,10 @@
 use actix_web::{delete, get, post, web, HttpResponse, Responder};
 
 use crate::{
-    models::{CancelOrderPayload, CreateOrderPayload, GetOpenOrdersPayload, GetQuoteRequest, MessageToEngine},
+    models::{
+        CancelOrderPayload, CreateOrderPayload, GetOpenOrdersPayload, GetQuoteRequest,
+        MessageToEngine,
+    },
     utils::redis_manager::RedisManager,
 };
 

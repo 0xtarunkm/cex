@@ -36,6 +36,7 @@ impl Engine {
                 asks: Vec::new(),
                 base_asset: base.to_string(),
                 quote_asset: quote.to_string(),
+                volitility: Decimal::from(0),
             };
             orderbooks.insert(
                 format!("{}_{}", base, quote),
@@ -198,7 +199,7 @@ impl Engine {
                 println!("Market: {}", data.market);
                 println!("Number of bids: {}", orderbook_guard.bids.len());
                 println!("Number of asks: {}", orderbook_guard.asks.len());
-                
+
                 let result = orderbook_guard.get_depth();
                 println!("Depth result orders: {}", result.orders.len());
 
@@ -277,7 +278,10 @@ impl Engine {
             .unwrap()
             .fill_orders(payload, &mut self.users);
 
-        println!("create order orderbook {}", orderbook.lock().unwrap().quote_asset);
+        println!(
+            "create order orderbook {}",
+            orderbook.lock().unwrap().quote_asset
+        );
 
         if remaining_qty == Decimal::from(0) {
             return Ok((payload.quantity, order_id.clone()));

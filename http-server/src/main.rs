@@ -26,7 +26,7 @@ async fn main() -> std::io::Result<()> {
                         .service(routes::open_orders)
                         .service(routes::get_quote),
                 )
-                .service(web::scope("/depth").service(routes::get_depth))
+                .service(web::scope("/depth").service(routes::get_depth)),
         )
     })
     .workers(4)

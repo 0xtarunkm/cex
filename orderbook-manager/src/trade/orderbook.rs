@@ -18,6 +18,7 @@ pub struct Orderbook {
     pub asks: Vec<Order>,
     pub base_asset: String,
     pub quote_asset: String,
+    pub volitility: Decimal,
 }
 
 impl Orderbook {
@@ -27,6 +28,7 @@ impl Orderbook {
             asks: Vec::new(),
             base_asset,
             quote_asset,
+            volitility: Decimal::from(0),
         }
     }
 
@@ -372,7 +374,7 @@ impl Orderbook {
                         side: MarginSide::Long,
                     });
                 }
-                user.margin_used += (price * quantity) / leverage;
+                user.margin_used += self.compute_dynamic_margin(price, quantity, leverage);
             }
             OrderType::MarginShort => {
                 let leverage = leverage.unwrap_or(dec!(1));
@@ -414,7 +416,7 @@ impl Orderbook {
                         usdc_balance.balance += price * quantity;
                     }
                 }
-                user.margin_used += (price * quantity) / leverage;
+                user.margin_used += self.compute_dynamic_margin(price, quantity, leverage);
             }
             OrderType::Spot => {}
         }
@@ -430,6 +432,17 @@ impl Orderbook {
             MarginSide::Long => entry_price * (dec!(1) - LIQUIDATION_THRESHOLD / leverage),
             MarginSide::Short => entry_price * (dec!(1) + LIQUIDATION_THRESHOLD / leverage),
         }
+    }
+
+    fn compute_dynamic_margin(
+        &self,
+        price: Decimal,
+        quantity: Decimal,
+        leverage: Decimal,
+    ) -> Decimal {
+        let base_margin = (price * quantity) / leverage;
+
+        base_margin * (Decimal::ONE + self.volitility)
     }
 
     pub fn get_quote_detail(&self, quantity: Decimal, side: OrderSide) -> GetQuoteResponse {
@@ -488,15 +501,12 @@ impl Orderbook {
             market: format!("{}_{}", self.base_asset, self.quote_asset),
         };
 
-        // Sort bids in descending order (highest price first)
         let mut sorted_bids: Vec<_> = self.bids.iter().collect();
         sorted_bids.sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap());
 
-        // Sort asks in ascending order (lowest price first)
         let mut sorted_asks: Vec<_> = self.asks.iter().collect();
         sorted_asks.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
 
-        // Process bids
         for bid in sorted_bids {
             if depth.orders.contains_key(&bid.price) {
                 depth.orders.get_mut(&bid.price).unwrap().quantity += bid.quantity;
@@ -511,7 +521,6 @@ impl Orderbook {
             }
         }
 
-        // Process asks
         for ask in sorted_asks {
             if depth.orders.contains_key(&ask.price) {
                 depth.orders.get_mut(&ask.price).unwrap().quantity += ask.quantity;
