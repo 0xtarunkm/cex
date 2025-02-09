@@ -11,13 +11,24 @@ pub struct IncomingMessage {
 
 // ORDERS
 #[derive(Debug, Clone, Serialize)]
-pub struct Order {
+pub struct MarginOrder {
     pub id: String,
     pub user_id: String,
     pub price: Decimal,
     pub quantity: Decimal,
-    pub order_type: OrderType,
-    pub leverage: Option<Decimal>,
+    pub leverage: Decimal,
+    pub side: MarginSide,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SpotOrder {
+    pub id: String,
+    pub user_id: String,
+    pub price: Decimal,
+    pub quantity: Decimal,
+    pub side: OrderSide,
+    pub timestamp: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -27,7 +38,7 @@ pub enum OrderType {
     Spot,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CreateOrderPayload {
     pub user_id: String,
     pub market: String,
@@ -48,7 +59,6 @@ pub struct OrderDetails {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Depth {
     pub orders: HashMap<Decimal, OrderDetails>,
-    pub market: String,
 }
 
 // USER
@@ -124,7 +134,7 @@ pub struct CreateOrderData {
     pub leverage: Option<Decimal>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum OrderSide {
     Buy,
     Sell,
@@ -194,7 +204,8 @@ pub enum MessageToApi {
 #[derive(Debug, Serialize)]
 pub struct OrderPlacedPayload {
     pub order_id: String,
-    pub executed_qty: Decimal,
+    pub remaining_qty: Decimal,
+    pub filled_qty: Decimal,
 }
 
 pub enum StatusCode {
@@ -204,13 +215,12 @@ pub enum StatusCode {
 
 #[derive(Debug, Serialize)]
 pub struct OrderCancelledPayload {
-    pub order_id: String,
     pub message: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct OpenOrdersPayload {
-    pub open_orders: Vec<Order>,
+    pub open_orders: Vec<SpotOrder>,
 }
 
 #[derive(Debug, Serialize)]

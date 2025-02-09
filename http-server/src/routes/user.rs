@@ -1,6 +1,9 @@
 use actix_web::{post, web, HttpResponse, Responder};
 
-use crate::{models::{GetUserBalancesPayload, MessageToEngine}, utils::redis_manager::RedisManager};
+use crate::{
+    models::{GetUserBalancesPayload, MessageToEngine},
+    utils::redis_manager::RedisManager,
+};
 
 #[post("/balances")]
 async fn get_balances(

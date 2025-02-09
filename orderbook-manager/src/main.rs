@@ -2,12 +2,13 @@ use anyhow::Result;
 use models::IncomingMessage;
 use redis::Commands;
 use trade::Engine;
-use utils::redis_manager::RedisManager;
+use services::redis_manager::RedisManager;
 
 mod constants;
 mod models;
 mod trade;
-mod utils;
+mod services;
+mod tests;
 
 fn main() -> Result<()> {
     let mut engine = Engine::new();

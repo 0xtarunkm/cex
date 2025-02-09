@@ -90,19 +90,19 @@ pub enum MessageFromEngine {
     UserBalances { payload: UserBalancesPayload },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Order {
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SpotOrder {
     pub id: String,
     pub user_id: String,
     pub price: Decimal,
     pub quantity: Decimal,
-    pub order_type: OrderType,
-    pub leverage: Option<Decimal>,
+    pub side: OrderSide,
+    pub timestamp: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpenOrdersPayload {
-    pub open_orders: Vec<Order>,
+    pub open_orders: Vec<SpotOrder>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -119,7 +119,8 @@ pub struct DepthPayload {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OrderPlacedPayload {
     pub order_id: String,
-    pub executed_qty: Decimal,
+    pub remaining_qty: Decimal,
+    pub filled_qty: Decimal,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -133,9 +134,7 @@ pub struct Fill {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OrderCancelledPayload {
-    pub order_id: String,
-    pub executed_qty: Decimal,
-    pub remaining_qty: Decimal,
+    pub message: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -165,4 +164,3 @@ pub struct Balance {
 pub struct UserBalancesPayload {
     pub balances: Vec<Balance>,
 }
-
