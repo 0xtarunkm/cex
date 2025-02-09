@@ -63,7 +63,7 @@ pub struct User {
     pub realized_pnl: Decimal,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Balances {
     pub ticker: String,
     pub balance: Decimal,
@@ -109,6 +109,8 @@ pub enum MessageFromApi {
     GetOpenOrders { data: GetOpenOrdersPayload },
     #[serde(rename = "GET_QUOTE")]
     GetQuote { data: GetQuoteRequest },
+    #[serde(rename = "GET_USER_BALANCES")]
+    GetUserBalances { data: GetUserBalancesPayload },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -167,6 +169,11 @@ pub struct GetQuoteResponse {
     pub total_cost: Decimal,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetUserBalancesPayload {
+    pub user_id: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "type")]
 pub enum MessageToApi {
@@ -180,6 +187,8 @@ pub enum MessageToApi {
     Depth { payload: Depth },
     #[serde(rename = "SEND_QUOTE")]
     Quote { payload: GetQuoteResponse },
+    #[serde(rename = "USER_BALANCES")]
+    UserBalances { payload: UserBalancesPayload },
 }
 
 #[derive(Debug, Serialize)]
@@ -235,4 +244,9 @@ pub struct QuoteResponse {
 pub enum Side {
     Buy,
     Sell,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UserBalancesPayload {
+    pub balances: Vec<Balances>,
 }

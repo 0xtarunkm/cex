@@ -18,7 +18,7 @@ pub struct Orderbook {
     pub asks: Vec<Order>,
     pub base_asset: String,
     pub quote_asset: String,
-    pub volitility: Decimal,
+    pub volatility: Decimal,
 }
 
 impl Orderbook {
@@ -28,7 +28,7 @@ impl Orderbook {
             asks: Vec::new(),
             base_asset,
             quote_asset,
-            volitility: Decimal::from(0),
+            volatility: Decimal::from(0),
         }
     }
 
@@ -257,7 +257,7 @@ impl Orderbook {
         }
     }
 
-    fn flip_balance_update_margin_position(
+    pub fn flip_balance_update_margin_position(
         &self,
         seller_id: &str,
         buyer_id: &str,
@@ -267,158 +267,70 @@ impl Orderbook {
         leverage: Option<Decimal>,
         users: &mut Arc<Mutex<Vec<User>>>,
     ) {
-        let mut user_guard = users.lock().unwrap();
+        let mut users_guard = users.lock().unwrap();
+        let trade_value = price * quantity;
 
-        if let Some(seller) = user_guard.iter_mut().find(|u| u.id == seller_id) {
-            match order_type {
-                OrderType::Spot => {
-                    if let Some(sol_balance) = seller
-                        .balances
-                        .iter_mut()
-                        .find(|b| b.ticker == "SOL".to_string())
-                    {
-                        sol_balance.balance -= quantity
-                    }
-                    if let Some(usdc_balance) = seller
-                        .balances
-                        .iter_mut()
-                        .find(|b| b.ticker == "USDC".to_string())
-                    {
-                        usdc_balance.balance -= price * quantity
-                    }
-                }
-                OrderType::MarginLong | OrderType::MarginShort => {
-                    drop(user_guard);
-                    self.update_margin_position(
-                        seller_id, price, quantity, order_type, leverage, users,
-                    );
-                    user_guard = users.lock().unwrap();
-                }
+        println!("DEBUG: Trade Details:");
+        println!("Price: {}, Quantity: {}, Trade Value: {}", price, quantity, trade_value);
+        println!("Order Type: {:?}, Leverage: {:?}", order_type, leverage);
+
+        // First, clear any existing locked balances for both parties
+        if let Some(buyer) = users_guard.iter_mut().find(|u| u.id == buyer_id) {
+            if let Some(usdc_balance) = buyer.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                usdc_balance.locked_balance = Decimal::ZERO;  // Reset locked balance
             }
         }
-        if let Some(buyer) = user_guard.iter_mut().find(|u| u.id == buyer_id) {
+
+        // Update Seller balances
+        if let Some(seller) = users_guard.iter_mut().find(|u| u.id == seller_id) {
+            if let Some(sol_balance) = seller.balances.iter_mut().find(|b| b.ticker == "SOL") {
+                sol_balance.balance -= quantity;
+            }
+            if let Some(usdc_balance) = seller.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                usdc_balance.balance += trade_value;
+            }
+        }
+
+        // Update Buyer balances
+        if let Some(buyer) = users_guard.iter_mut().find(|u| u.id == buyer_id) {
             match order_type {
-                OrderType::Spot => {
-                    if let Some(sol_balance) = buyer
-                        .balances
-                        .iter_mut()
-                        .find(|b| b.ticker == "SOL".to_string())
-                    {
+                OrderType::MarginLong => {
+                    let margin_requirement = trade_value / leverage.unwrap_or(Decimal::ONE);
+                    
+                    // Add SOL to buyer
+                    if let Some(sol_balance) = buyer.balances.iter_mut().find(|b| b.ticker == "SOL") {
                         sol_balance.balance += quantity;
                     }
-                    if let Some(usdc_balance) = buyer
-                        .balances
-                        .iter_mut()
-                        .find(|b| b.ticker == "USDC".to_string())
-                    {
-                        usdc_balance.balance -= price * quantity;
+                    // Set the correct margin lock
+                    if let Some(usdc_balance) = buyer.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                        usdc_balance.locked_balance = margin_requirement;
                     }
-                }
-                OrderType::MarginLong | OrderType::MarginShort => {
-                    drop(user_guard);
-                    self.update_margin_position(
-                        buyer_id, price, quantity, order_type, leverage, users,
-                    );
-                }
-            }
-        }
-    }
 
-    fn update_margin_position(
-        &self,
-        user_id: &str,
-        price: Decimal,
-        quantity: Decimal,
-        order_type: &OrderType,
-        leverage: Option<Decimal>,
-        users: &mut Arc<Mutex<Vec<User>>>,
-    ) {
-        let mut user_guard = users.lock().unwrap();
-        let user = user_guard
-            .iter_mut()
-            .find(|u| u.id == user_id)
-            .expect("User not found");
-
-        match order_type {
-            OrderType::MarginLong => {
-                let leverage = leverage.unwrap_or(dec!(1));
-                let position = user
-                    .margin_positions
-                    .iter_mut()
-                    .find(|p| p.ticker == "SOL".to_string() && matches!(p.side, MarginSide::Long));
-
-                if let Some(pos) = position {
-                    let new_size = pos.size + quantity;
-                    let new_entry_price =
-                        (pos.entry_price * pos.size + price * quantity) / new_size;
-                    pos.size = new_size;
-                    pos.entry_price = new_entry_price;
-                    pos.liquidation_price = self.calculate_liquidation_price(
-                        new_entry_price,
-                        leverage,
-                        MarginSide::Long,
-                    );
-                    pos.unrealized_pnl = (price - pos.entry_price) * pos.size * leverage;
-                } else {
-                    user.margin_positions.push(MarginPosition {
+                    // Create/update margin position
+                    buyer.margin_positions.push(MarginPosition {
                         ticker: "SOL".to_string(),
+                        side: MarginSide::Long,
                         size: quantity,
                         entry_price: price,
+                        leverage: leverage.unwrap_or(Decimal::ONE),
                         liquidation_price: self.calculate_liquidation_price(
                             price,
-                            leverage,
+                            leverage.unwrap_or(Decimal::ONE),
                             MarginSide::Long,
                         ),
-                        leverage,
-                        unrealized_pnl: dec!(0),
-                        side: MarginSide::Long,
+                        unrealized_pnl: Decimal::from(0),
                     });
-                }
-                user.margin_used += self.compute_dynamic_margin(price, quantity, leverage);
-            }
-            OrderType::MarginShort => {
-                let leverage = leverage.unwrap_or(dec!(1));
-                let position = user
-                    .margin_positions
-                    .iter_mut()
-                    .find(|p| p.ticker == "SOL" && matches!(p.side, MarginSide::Short));
-
-                if let Some(pos) = position {
-                    let new_size = pos.size + quantity;
-                    let new_entry_price =
-                        (pos.entry_price * pos.size + price * quantity) / new_size;
-                    pos.size = new_size;
-                    pos.entry_price = new_entry_price;
-                    pos.liquidation_price = self.calculate_liquidation_price(
-                        new_entry_price,
-                        leverage,
-                        MarginSide::Short,
-                    );
-                    pos.unrealized_pnl = (pos.entry_price - price) * pos.size * leverage;
-                } else {
-                    user.margin_positions.push(MarginPosition {
-                        ticker: "SOL".to_string(),
-                        size: quantity,
-                        entry_price: price,
-                        liquidation_price: self.calculate_liquidation_price(
-                            price,
-                            leverage,
-                            MarginSide::Short,
-                        ),
-                        leverage,
-                        unrealized_pnl: dec!(0),
-                        side: MarginSide::Short,
-                    });
-
-                    if let Some(usdc_balance) =
-                        user.balances.iter_mut().find(|b| b.ticker == "USDC")
-                    {
-                        usdc_balance.balance += price * quantity;
+                },
+                _ => {
+                    // Handle spot orders
+                    if let Some(sol_balance) = buyer.balances.iter_mut().find(|b| b.ticker == "SOL") {
+                        sol_balance.balance += quantity;
+                    }
+                    if let Some(usdc_balance) = buyer.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                        usdc_balance.balance -= trade_value;
                     }
                 }
-                user.margin_used += self.compute_dynamic_margin(price, quantity, leverage);
             }
-            OrderType::Spot => {}
         }
     }
 
@@ -442,7 +354,7 @@ impl Orderbook {
     ) -> Decimal {
         let base_margin = (price * quantity) / leverage;
 
-        base_margin * (Decimal::ONE + self.volitility)
+        base_margin * (Decimal::ONE + self.volatility)
     }
 
     pub fn get_quote_detail(&self, quantity: Decimal, side: OrderSide) -> GetQuoteResponse {

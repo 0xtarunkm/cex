@@ -16,6 +16,8 @@ pub enum MessageToEngine {
     GetOpenOrders { data: GetOpenOrdersPayload },
     #[serde(rename = "GET_QUOTE")]
     GetQuote { data: GetQuoteRequest },
+    #[serde(rename = "GET_USER_BALANCES")]
+    GetUserBalances { data: GetUserBalancesPayload },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -68,6 +70,11 @@ pub struct GetQuoteRequest {
     pub quantity: Decimal,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetUserBalancesPayload {
+    pub user_id: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum MessageFromEngine {
@@ -79,16 +86,18 @@ pub enum MessageFromEngine {
     OrderCancelled { payload: OrderCancelledPayload },
     #[serde(rename = "OPEN_ORDERS")]
     OpenOrders { payload: OpenOrdersPayload },
+    #[serde(rename = "USER_BALANCES")]
+    UserBalances { payload: UserBalancesPayload },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Order {
+    pub id: String,
+    pub user_id: String,
     pub price: Decimal,
     pub quantity: Decimal,
-    pub filled: Decimal,
-    pub side: OrderSide,
-    pub user_id: String,
-    pub order_id: String,
+    pub order_type: OrderType,
+    pub leverage: Option<Decimal>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -144,3 +153,16 @@ pub enum OrderSide {
     Buy,
     Sell,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Balance {
+    pub ticker: String,
+    pub balance: Decimal,
+    pub locked_balance: Decimal,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UserBalancesPayload {
+    pub balances: Vec<Balance>,
+}
+

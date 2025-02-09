@@ -12,7 +12,7 @@ use crate::{
     models::{
         Balances, CreateOrderPayload, GetQuoteResponse, MessageFromApi, MessageToApi,
         OpenOrdersPayload, Order, OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType,
-        StatusCode, User,
+        StatusCode, User, UserBalancesPayload,
     },
     utils::redis_manager::RedisManager,
 };
@@ -20,8 +20,8 @@ use crate::{
 use super::Orderbook;
 
 pub struct Engine {
-    orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<Orderbook>>>>>,
-    users: Arc<Mutex<Vec<User>>>,
+    pub orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<Orderbook>>>>>,
+    pub users: Arc<Mutex<Vec<User>>>,
 }
 
 impl Engine {
@@ -36,7 +36,7 @@ impl Engine {
                 asks: Vec::new(),
                 base_asset: base.to_string(),
                 quote_asset: quote.to_string(),
-                volitility: Decimal::from(0),
+                volatility: Decimal::from(0),
             };
             orderbooks.insert(
                 format!("{}_{}", base, quote),
@@ -236,10 +236,26 @@ impl Engine {
 
                 let _ = redis_manager.send_to_api(&client_id, &message);
             }
+            MessageFromApi::GetUserBalances { data } => {
+                let mut users = self.users.lock().unwrap();
+                let user = users
+                    .iter_mut()
+                    .find(|u| u.id == data.user_id)
+                    .expect("User not found");
+
+                let redis_manager = RedisManager::instance();
+                let message = MessageToApi::UserBalances {
+                    payload: UserBalancesPayload {
+                        balances: user.balances.clone(),
+                    },
+                };
+
+                let _ = redis_manager.send_to_api(&client_id, &message);
+            }
         }
     }
 
-    fn create_order(
+    pub fn create_order(
         &mut self,
         market: &str,
         payload: &CreateOrderPayload,
