@@ -1,7 +1,8 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use rust_decimal::Decimal;
+use tokio::sync::Mutex;
 
 use crate::models::{
     CreateOrderPayload, Depth, GetQuoteResponse, OrderDetails, OrderSide, SpotOrder, User,
@@ -24,7 +25,7 @@ impl SpotOrderbook {
         }
     }
 
-    pub fn fill_orders(
+    pub async fn fill_orders(
         &mut self,
         order: &CreateOrderPayload,
         users: &mut Arc<Mutex<Vec<User>>>,
@@ -37,13 +38,13 @@ impl SpotOrderbook {
             OrderSide::Buy => {
                 while !self.asks.is_empty() && remaining_qty > Decimal::ZERO {
                     let ask = &self.asks[0];
-                    
+
                     if ask.price > order.price {
                         break;
                     }
 
                     let fill_qty = remaining_qty.min(ask.quantity);
-                    
+
                     self.flip_balance(
                         &order.user_id,
                         &ask.user_id,
@@ -52,7 +53,8 @@ impl SpotOrderbook {
                         users,
                         base_asset,
                         quote_asset,
-                    );
+                    )
+                    .await;
 
                     remaining_qty -= fill_qty;
                     self.asks[0].quantity -= fill_qty;
@@ -65,13 +67,13 @@ impl SpotOrderbook {
             OrderSide::Sell => {
                 while !self.bids.is_empty() && remaining_qty > Decimal::ZERO {
                     let bid = &self.bids[0];
-                    
+
                     if bid.price < order.price {
                         break;
                     }
 
                     let fill_qty = remaining_qty.min(bid.quantity);
-                    
+
                     self.flip_balance(
                         &bid.user_id,
                         &order.user_id,
@@ -80,7 +82,8 @@ impl SpotOrderbook {
                         users,
                         base_asset,
                         quote_asset,
-                    );
+                    )
+                    .await;
 
                     remaining_qty -= fill_qty;
                     self.bids[0].quantity -= fill_qty;
@@ -177,7 +180,7 @@ impl SpotOrderbook {
         }
     }
 
-    fn flip_balance(
+    async fn flip_balance(
         &self,
         buyer_id: &str,
         seller_id: &str,
@@ -187,16 +190,20 @@ impl SpotOrderbook {
         base_asset: &str,
         quote_asset: &str,
     ) {
-        let mut users_guard = users.lock().unwrap();
+        let mut users_guard = users.lock().await;
         let trade_value = price * quantity;
 
         if let Some(seller) = users_guard.iter_mut().find(|u| u.id == seller_id) {
-            if let Some(base_balance) = seller.balances.iter_mut().find(|b| b.ticker == base_asset) {
-                base_balance.locked_balance = base_balance.locked_balance.checked_sub(quantity).unwrap();
+            if let Some(base_balance) = seller.balances.iter_mut().find(|b| b.ticker == base_asset)
+            {
+                base_balance.locked_balance =
+                    base_balance.locked_balance.checked_sub(quantity).unwrap();
                 base_balance.balance = base_balance.balance.checked_sub(quantity).unwrap();
             }
 
-            if let Some(quote_balance) = seller.balances.iter_mut().find(|b| b.ticker == quote_asset) {
+            if let Some(quote_balance) =
+                seller.balances.iter_mut().find(|b| b.ticker == quote_asset)
+            {
                 quote_balance.balance = quote_balance.balance.checked_add(trade_value).unwrap();
             }
         }
@@ -206,8 +213,12 @@ impl SpotOrderbook {
                 base_balance.balance = base_balance.balance.checked_add(quantity).unwrap();
             }
 
-            if let Some(quote_balance) = buyer.balances.iter_mut().find(|b| b.ticker == quote_asset) {
-                quote_balance.locked_balance = quote_balance.locked_balance.checked_sub(trade_value).unwrap();
+            if let Some(quote_balance) = buyer.balances.iter_mut().find(|b| b.ticker == quote_asset)
+            {
+                quote_balance.locked_balance = quote_balance
+                    .locked_balance
+                    .checked_sub(trade_value)
+                    .unwrap();
                 quote_balance.balance = quote_balance.balance.checked_sub(trade_value).unwrap();
             }
         }

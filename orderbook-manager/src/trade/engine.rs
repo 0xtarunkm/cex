@@ -1,40 +1,50 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::Utc;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::{
     models::{
-        Balances, CancelOrderPayload, CreateOrderPayload, GetQuoteResponse, MessageFromApi, MessageToApi, OpenOrdersPayload, OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType, SpotOrder, StatusCode, User, UserBalancesPayload
+        Balances, CancelOrderPayload, CreateOrderPayload, MarginOrder,
+        MarginPosition, MarginPositionsPayload, MessageFromApi, MessageToApi, OpenOrdersPayload,
+        OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType, SpotOrder, User,
+        UserBalancesPayload,
     },
-    services::redis_manager::RedisManager,
+    services::{pnl_service::PnlMonitor, price_service::PriceService, redis_manager::RedisManager},
 };
 
-use super::SpotOrderbook;
+use super::{MarginOrderbook, SpotOrderbook};
 
 pub struct Engine {
     pub spot_orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<SpotOrderbook>>>>>,
+    pub margin_orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<MarginOrderbook>>>>>,
     pub users: Arc<Mutex<Vec<User>>>,
+    pub price_service: Arc<PriceService>,
 }
-
+ 
 impl Engine {
     pub fn new() -> Self {
         let mut spot_orderbooks = HashMap::new();
+        let mut margin_orderbooks = HashMap::new();
 
         let markets = vec![("SOL", "USDC"), ("BTC", "USDC"), ("ETH", "USDC")];
 
-        for (base, quote) in markets {
-            let orderbook = SpotOrderbook::new(
-                base.to_string(),
-                quote.to_string(),
-            );
-            
+        for (base, quote) in &markets {
+            let orderbook = SpotOrderbook::new(base.to_string(), quote.to_string());
+
             spot_orderbooks.insert(
+                format!("{}_{}", base, quote),
+                Arc::new(Mutex::new(orderbook)),
+            );
+        }
+
+        for (base, quote) in &markets {
+            let orderbook = MarginOrderbook::new(base.to_string(), quote.to_string());
+
+            margin_orderbooks.insert(
                 format!("{}_{}", base, quote),
                 Arc::new(Mutex::new(orderbook)),
             );
@@ -103,16 +113,38 @@ impl Engine {
             },
         ];
 
+        let spot_orderbooks = Arc::new(Mutex::new(spot_orderbooks));
+        let margin_orderbooks = Arc::new(Mutex::new(margin_orderbooks));
+        let users = Arc::new(Mutex::new(users));
+
+        let price_service = Arc::new(PriceService::new(
+            spot_orderbooks.clone(),
+            margin_orderbooks.clone(),
+        ));
+
+        let price_service_clone = Arc::clone(&price_service);
+        tokio::spawn(async move {
+            price_service_clone.start_price_updates().await;
+        });
+
+        let pnl_monitor = PnlMonitor::new(Arc::clone(&users), Arc::clone(&price_service));
+
+        tokio::spawn(async move {
+            pnl_monitor.start_monitoring().await;
+        });
+
         Engine {
-            spot_orderbooks: Arc::new(Mutex::new(spot_orderbooks)),
-            users: Arc::new(Mutex::new(users)),
+            spot_orderbooks,
+            margin_orderbooks,
+            users,
+            price_service,
         }
     }
 
-    pub fn process(&mut self, client_id: String, message: MessageFromApi) {
+    pub async fn process(&mut self, client_id: String, message: MessageFromApi) {
         match message {
             MessageFromApi::CreateOrder { data } => {
-                let result = self.create_order(&data);
+                let result = self.create_order(&data).await;
 
                 match result {
                     Ok((remaining_qty, filled_qty, order_id)) => {
@@ -141,7 +173,7 @@ impl Engine {
                 }
             }
             MessageFromApi::CancelOrder { data } => {
-                let result = self.cancel_order(&data);
+                let result = self.cancel_order(&data).await;
 
                 match result {
                     Ok(()) => {
@@ -168,46 +200,65 @@ impl Engine {
                 }
             }
             MessageFromApi::GetQuote { data } => {
-                let orderbooks = self.spot_orderbooks.lock().unwrap();
-                let orderbook = orderbooks
-                    .get(&data.market)
-                    .ok_or("Market not found")
-                    .unwrap();
-
-                let result = orderbook
-                    .lock()
-                    .unwrap()
-                    .get_quote_detail(data.quantity, data.side);
-
-                let redis_manager = RedisManager::instance();
-                let message = MessageToApi::Quote {
-                    payload: GetQuoteResponse {
-                        avg_price: result.avg_price,
-                        quantity: result.quantity,
-                        total_cost: result.total_cost,
-                    },
+                let result = match data.order_type {
+                    OrderType::MarginLong | OrderType::MarginShort => {
+                        let orderbooks = self.margin_orderbooks.lock().await;
+                        let orderbook = orderbooks
+                            .get(&data.market)
+                            .ok_or("Market not found")
+                            .unwrap();
+                        let quote = orderbook
+                            .lock()
+                            .await
+                            .get_quote_detail(data.quantity, data.order_type);
+                        quote
+                    }
+                    OrderType::Spot => {
+                        let orderbooks = self.spot_orderbooks.lock().await;
+                        let orderbook = orderbooks
+                            .get(&data.market)
+                            .ok_or("Market not found")
+                            .unwrap();
+                        let quote = orderbook
+                            .lock()
+                            .await
+                            .get_quote_detail(data.quantity, data.side);
+                        quote
+                    }
                 };
 
+                let redis_manager = RedisManager::instance();
+                let message = MessageToApi::Quote { payload: result };
                 let _ = redis_manager.send_to_api(&client_id, &message);
             }
             MessageFromApi::GetDepth { data } => {
-                let orderbooks = self.spot_orderbooks.lock().unwrap();
-                let orderbook = orderbooks
-                    .get(&data.market)
-                    .ok_or("Market not found")
-                    .unwrap();
-
-                let orderbook_guard = orderbook.lock().unwrap();
-
-                let result = orderbook_guard.get_depth();
+                let result = match data.order_type {
+                    OrderType::MarginLong | OrderType::MarginShort => {
+                        let orderbooks = self.margin_orderbooks.lock().await;
+                        let orderbook = orderbooks
+                            .get(&data.market)
+                            .ok_or("Market not found")
+                            .unwrap();
+                        let depth = orderbook.lock().await.get_depth();
+                        depth
+                    }
+                    OrderType::Spot => {
+                        let orderbooks = self.spot_orderbooks.lock().await;
+                        let orderbook = orderbooks
+                            .get(&data.market)
+                            .ok_or("Market not found")
+                            .unwrap();
+                        let depth = orderbook.lock().await.get_depth();
+                        depth
+                    }
+                };
 
                 let redis_manager = RedisManager::instance();
                 let message = MessageToApi::Depth { payload: result };
-
                 let _ = redis_manager.send_to_api(&client_id, &message);
             }
             MessageFromApi::GetOpenOrders { data } => {
-                let orderbooks = self.spot_orderbooks.lock().unwrap();
+                let orderbooks = self.spot_orderbooks.lock().await;
                 let orderbook = orderbooks
                     .get(&data.market)
                     .ok_or("Market not found")
@@ -215,13 +266,13 @@ impl Engine {
 
                 let mut open_orders = Vec::new();
 
-                for bid in orderbook.lock().unwrap().bids.iter() {
+                for bid in orderbook.lock().await.bids.iter() {
                     if bid.user_id == data.user_id {
                         open_orders.push(bid.clone());
                     }
                 }
 
-                for ask in orderbook.lock().unwrap().asks.iter() {
+                for ask in orderbook.lock().await.asks.iter() {
                     if ask.user_id == data.user_id {
                         open_orders.push(ask.clone());
                     }
@@ -235,7 +286,7 @@ impl Engine {
                 let _ = redis_manager.send_to_api(&client_id, &message);
             }
             MessageFromApi::GetUserBalances { data } => {
-                let mut users = self.users.lock().unwrap();
+                let mut users = self.users.lock().await;
                 let user = users
                     .iter_mut()
                     .find(|u| u.id == data.user_id)
@@ -250,40 +301,138 @@ impl Engine {
 
                 let _ = redis_manager.send_to_api(&client_id, &message);
             }
+            MessageFromApi::GetMarginPositions { data } => {
+                let mut users = self.users.lock().await;
+                println!("Getting positions for user_id: {}", data.user_id);
+                let user = users
+                    .iter_mut()
+                    .find(|u| u.id == data.user_id)
+                    .expect("User not found");
+
+                println!("User found: {:?}", user);
+                println!("Margin positions: {:?}", user.margin_positions);
+
+                let redis_manager = RedisManager::instance();
+                let message = MessageToApi::GetMarginPositions {
+                    payload: MarginPositionsPayload {
+                        positions: user.margin_positions.clone(),
+                    },
+                };
+
+                let _ = redis_manager.send_to_api(&client_id, &message);
+            }
         }
     }
 
-    pub fn create_order(
+    pub async fn create_order(
         &mut self,
         payload: &CreateOrderPayload,
     ) -> Result<(Decimal, Decimal, String), Box<dyn std::error::Error>> {
         let order_id = Uuid::new_v4().to_string();
 
-        // validation check for spot and margin order
         match payload.order_type {
             OrderType::MarginLong | OrderType::MarginShort => {
-                // if !self.validate_margin_requirements(&payload) {
-                //     return Err("Insufficient margin or invalid margin requirements".into());
-                // }
-                Ok((Decimal::ZERO, Decimal::ZERO, order_id))
-            }
-            OrderType::Spot => {
-                if !self.validate_spot_balance(&payload) {
-                    return Err("Insufficient balance for spot trade".into());
+                if !self.validate_margin_requirements(&payload).await {
+                    return Err("Insufficient margin or invalid margin requirements".into());
                 }
 
-                let orderbooks = self.spot_orderbooks.lock().unwrap();
+                let orderbooks = self.margin_orderbooks.lock().await;
                 let orderbook = orderbooks
                     .get(&payload.market)
                     .ok_or("Market not found")
                     .unwrap();
 
-                let remaining_qty = orderbook.lock().unwrap().fill_orders(
-                    payload,
-                    &mut self.users,
-                    &payload.market.split('_').nth(0).unwrap().to_string(),
-                    &payload.market.split('_').nth(1).unwrap().to_string(),
-                );
+                let remaining_qty = orderbook
+                    .lock()
+                    .await
+                    .fill_orders(
+                        payload,
+                        &mut self.users,
+                        &payload.market.split('_').nth(0).unwrap().to_string(),
+                    )
+                    .await;
+
+                if remaining_qty == Decimal::from(0) {
+                    return Ok((Decimal::ZERO, payload.quantity, order_id.clone()));
+                }
+
+                let mut users = self.users.lock().await;
+                if let Some(user) = users.iter_mut().find(|u| u.id == payload.user_id) {
+                    let base_asset = payload.market.split('_').nth(0).unwrap().to_string();
+                    let new_position = MarginPosition {
+                        asset: base_asset,
+                        quantity: remaining_qty,
+                        avg_price: payload.price,
+                        position_type: payload.order_type.clone(),
+                        unrealized_pnl: None,
+                        liquidation_price: None,
+                    };
+                    user.margin_positions.push(new_position);
+                }
+
+                let mut orderbook_guard = orderbook.lock().await;
+                match payload.order_type {
+                    OrderType::MarginLong => {
+                        orderbook_guard.longs.push(MarginOrder {
+                            id: order_id.clone(),
+                            user_id: payload.user_id.clone(),
+                            price: payload.price,
+                            quantity: remaining_qty,
+                            leverage: payload.leverage.unwrap_or(dec!(1)),
+                            order_type: OrderType::MarginLong,
+                            timestamp: Utc::now().timestamp(),
+                        });
+
+                        orderbook_guard.longs.sort_by(|a, b| {
+                            b.price
+                                .cmp(&a.price)
+                                .then_with(|| a.timestamp.cmp(&b.timestamp))
+                        });
+                    }
+                    OrderType::MarginShort => {
+                        orderbook_guard.shorts.push(MarginOrder {
+                            id: order_id.clone(),
+                            user_id: payload.user_id.clone(),
+                            price: payload.price,
+                            quantity: remaining_qty,
+                            leverage: payload.leverage.unwrap_or(dec!(1)),
+                            order_type: OrderType::MarginShort,
+                            timestamp: Utc::now().timestamp(),
+                        });
+
+                        orderbook_guard.shorts.sort_by(|a, b| {
+                            a.price
+                                .cmp(&b.price)
+                                .then_with(|| a.timestamp.cmp(&b.timestamp))
+                        });
+                    }
+                    _ => unreachable!(),
+                }
+
+                let filled_qty = payload.quantity.checked_sub(remaining_qty).unwrap();
+                Ok((remaining_qty, filled_qty, order_id))
+            }
+            OrderType::Spot => {
+                if !self.validate_spot_balance(&payload).await {
+                    return Err("Insufficient balance for spot trade".into());
+                }
+
+                let orderbooks = self.spot_orderbooks.lock().await;
+                let orderbook = orderbooks
+                    .get(&payload.market)
+                    .ok_or("Market not found")
+                    .unwrap();
+
+                let remaining_qty = orderbook
+                    .lock()
+                    .await
+                    .fill_orders(
+                        payload,
+                        &mut self.users,
+                        &payload.market.split('_').nth(0).unwrap().to_string(),
+                        &payload.market.split('_').nth(1).unwrap().to_string(),
+                    )
+                    .await;
 
                 if remaining_qty == Decimal::from(0) {
                     return Ok((Decimal::ZERO, payload.quantity, order_id.clone()));
@@ -291,7 +440,7 @@ impl Engine {
 
                 match payload.side {
                     OrderSide::Buy => {
-                        let mut orderbook_guard = orderbook.lock().unwrap();
+                        let mut orderbook_guard = orderbook.lock().await;
                         orderbook_guard.bids.push(SpotOrder {
                             id: order_id.clone(),
                             user_id: payload.user_id.clone(),
@@ -300,7 +449,7 @@ impl Engine {
                             side: payload.side.clone(),
                             timestamp: Utc::now().timestamp(),
                         });
-                        // (highest price first)
+
                         orderbook_guard.bids.sort_by(|a, b| {
                             b.price
                                 .cmp(&a.price)
@@ -308,7 +457,7 @@ impl Engine {
                         });
                     }
                     OrderSide::Sell => {
-                        let mut orderbook_guard = orderbook.lock().unwrap();
+                        let mut orderbook_guard = orderbook.lock().await;
                         orderbook_guard.asks.push(SpotOrder {
                             id: order_id.clone(),
                             user_id: payload.user_id.clone(),
@@ -317,7 +466,7 @@ impl Engine {
                             side: payload.side.clone(),
                             timestamp: Utc::now().timestamp(),
                         });
-                        // (lowest price first)
+
                         orderbook_guard.asks.sort_by(|a, b| {
                             a.price
                                 .cmp(&b.price)
@@ -333,14 +482,14 @@ impl Engine {
         }
     }
 
-    pub fn cancel_order(
+    pub async fn cancel_order(
         &mut self,
         payload: &CancelOrderPayload,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let orderbooks = self.spot_orderbooks.lock().unwrap();
+        let orderbooks = self.spot_orderbooks.lock().await;
         let orderbook = orderbooks.get(&payload.market).ok_or("Market not found")?;
 
-        let mut orderbook_guard = orderbook.lock().unwrap();
+        let mut orderbook_guard = orderbook.lock().await;
 
         if let Some(bid_index) = orderbook_guard
             .bids
@@ -349,7 +498,7 @@ impl Engine {
         {
             let order = &orderbook_guard.bids[bid_index];
 
-            let mut users = self.users.lock().unwrap();
+            let mut users = self.users.lock().await;
             if let Some(user) = users.iter_mut().find(|u| u.id == order.user_id) {
                 let quote_asset = payload.market.split('_').nth(1).unwrap();
                 if let Some(balance) = user.balances.iter_mut().find(|b| b.ticker == quote_asset) {
@@ -369,7 +518,7 @@ impl Engine {
         {
             let order = &orderbook_guard.asks[ask_index];
 
-            let mut users = self.users.lock().unwrap();
+            let mut users = self.users.lock().await;
             if let Some(user) = users.iter_mut().find(|u| u.id == order.user_id) {
                 let base_asset = payload.market.split('_').nth(0).unwrap();
                 if let Some(balance) = user.balances.iter_mut().find(|b| b.ticker == base_asset) {
@@ -384,66 +533,85 @@ impl Engine {
         Err("Order not found".into())
     }
 
-    //     fn validate_margin_requirements(&self, payload: &CreateOrderPayload) -> bool {
-    //         let mut users = self.users.lock().unwrap();
-    //         let user = users
-    //             .iter_mut()
-    //             .find(|u| u.id == payload.user_id)
-    //             .expect("User not found");
+    async fn validate_margin_requirements(&self, payload: &CreateOrderPayload) -> bool {
+        let mut users = self.users.lock().await;
+        let user = users
+            .iter_mut()
+            .find(|u| u.id == payload.user_id)
+            .expect("User not found");
 
-    //         if !user.margin_enabled {
-    //             return false;
-    //         }
+        if !user.margin_enabled {
+            return false;
+        }
 
-    //         let leverage = payload.leverage.unwrap_or(dec!(1));
-    //         if leverage > MAX_LEVERAGE {
-    //             return false;
-    //         }
+        let leverage = payload.leverage.unwrap_or(dec!(1));
+        if leverage > user.max_leverage {
+            return false;
+        }
 
-    //         let usdc_balance = user
-    //             .balances
-    //             .iter()
-    //             .find(|b| b.ticker == "USDC")
-    //             .map(|b| b.balance - b.locked_balance)
-    //             .unwrap_or(dec!(0));
+        let usdc_balance = user
+            .balances
+            .iter()
+            .find(|b| b.ticker == "USDC")
+            .map(|b| b.balance - b.locked_balance)
+            .unwrap_or(dec!(0));
 
-    //         let required_margin = (payload.price * payload.quantity) / leverage;
+        let position_value = payload.price * payload.quantity;
+        let required_margin = position_value / leverage;
 
-    //         match payload.order_type {
-    //             OrderType::MarginLong => {
-    //                 if usdc_balance >= required_margin {
-    //                     if let Some(balance) = user
-    //                         .balances
-    //                         .iter_mut()
-    //                         .find(|b| b.ticker == "USDC".to_string())
-    //                     {
-    //                         balance.locked_balance += required_margin;
-    //                     }
-    //                     return true;
-    //                 } else {
-    //                     return false;
-    //                 }
-    //             }
-    //             OrderType::MarginShort => {
-    //                 let safety_multiplier = dec!(1.1);
-    //                 let adjusted_required_margin = required_margin * safety_multiplier;
+        let total_margin_used = user.margin_used + required_margin;
+        let max_margin_allowed = usdc_balance * user.max_leverage;
 
-    //                 if usdc_balance >= adjusted_required_margin {
-    //                     if let Some(balance) = user.balances.iter_mut().find(|b| b.ticker == "USDC") {
-    //                         balance.locked_balance += adjusted_required_margin;
-    //                     }
-    //                     return true;
-    //                 } else {
-    //                     return false;
-    //                 }
-    //             }
-    //             OrderType::Spot => {}
-    //         }
-    //         true
-    //     }
+        if total_margin_used > max_margin_allowed {
+            return false;
+        }
 
-    fn validate_spot_balance(&self, payload: &CreateOrderPayload) -> bool {
-        let mut users = self.users.lock().unwrap();
+        match payload.order_type {
+            OrderType::MarginLong => {
+                if let Some(existing_short) = user.margin_positions.iter().find(|p| {
+                    p.asset == payload.market.split('_').next().unwrap()
+                        && p.position_type == OrderType::MarginShort
+                }) {
+                    if existing_short.quantity >= payload.quantity {
+                        return true;
+                    }
+                }
+
+                if usdc_balance >= required_margin {
+                    if let Some(balance) = user.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                        balance.locked_balance += required_margin;
+                        return true;
+                    }
+                }
+            }
+            OrderType::MarginShort => {
+                if let Some(existing_long) = user.margin_positions.iter().find(|p| {
+                    p.asset == payload.market.split('_').next().unwrap()
+                        && p.position_type == OrderType::MarginLong
+                }) {
+                    if existing_long.quantity >= payload.quantity {
+                        return true;
+                    }
+                }
+
+                let safety_multiplier = dec!(1.1);
+                let adjusted_required_margin = required_margin * safety_multiplier;
+
+                if usdc_balance >= adjusted_required_margin {
+                    if let Some(balance) = user.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                        balance.locked_balance += adjusted_required_margin;
+                        return true;
+                    }
+                }
+            }
+            OrderType::Spot => return true,
+        }
+
+        false
+    }
+
+    async fn validate_spot_balance(&self, payload: &CreateOrderPayload) -> bool {
+        let mut users = self.users.lock().await;
         let user = users
             .iter_mut()
             .find(|u| u.id == payload.user_id)

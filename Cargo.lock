@@ -1480,12 +1480,14 @@ dependencies = [
  "anyhow",
  "chrono",
  "lazy_static",
+ "log",
  "once_cell",
  "redis",
  "rust_decimal",
  "rust_decimal_macros",
  "serde",
  "serde_json",
+ "tokio",
  "uuid",
 ]
 

@@ -26,6 +26,7 @@ rand = "0.9.0"
 tokio-tungstenite = "0.20.1"
 
 # Common dependencies
+log = "0.4.25"
 redis = { version = "0.28.2", features = ["async-std-comp"] }
 rust_decimal = "1.36.0"
 rust_decimal_macros = "1.36.0"

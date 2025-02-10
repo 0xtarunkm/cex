@@ -18,6 +18,13 @@ pub enum MessageToEngine {
     GetQuote { data: GetQuoteRequest },
     #[serde(rename = "GET_USER_BALANCES")]
     GetUserBalances { data: GetUserBalancesPayload },
+    #[serde(rename = "GET_MARGIN_POSITIONS")]
+    GetMarginPositions { data: GetMarginPositionsPayload },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginPositionsPayload {
+    pub user_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,6 +62,7 @@ pub struct OnRampData {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetDepthPayload {
     pub market: String,
+    pub order_type: OrderType,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -63,9 +71,10 @@ pub struct GetOpenOrdersPayload {
     pub market: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GetQuoteRequest {
     pub market: String,
+    pub order_type: OrderType,
     pub side: OrderSide,
     pub quantity: Decimal,
 }
@@ -88,6 +97,23 @@ pub enum MessageFromEngine {
     OpenOrders { payload: OpenOrdersPayload },
     #[serde(rename = "USER_BALANCES")]
     UserBalances { payload: UserBalancesPayload },
+    #[serde(rename = "GET_MARGIN_POSITIONS")]
+    GetMarginPositions { payload: MarginPositionsPayload },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarginPositionsPayload {
+    pub positions: Vec<MarginPosition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarginPosition {
+    pub asset: String,
+    pub quantity: Decimal,
+    pub avg_price: Decimal,
+    pub position_type: OrderType,
+    pub unrealized_pnl: Option<Decimal>,
+    pub liquidation_price: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

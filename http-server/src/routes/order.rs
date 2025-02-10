@@ -2,8 +2,7 @@ use actix_web::{delete, get, post, web, HttpResponse, Responder};
 
 use crate::{
     models::{
-        CancelOrderPayload, CreateOrderPayload, GetOpenOrdersPayload, GetQuoteRequest,
-        MessageToEngine,
+        CancelOrderPayload, CreateOrderPayload, GetMarginPositionsPayload, GetOpenOrdersPayload, GetQuoteRequest, MessageToEngine
     },
     utils::redis_manager::RedisManager,
 };
@@ -61,6 +60,19 @@ async fn open_orders(
     let message = MessageToEngine::GetOpenOrders {
         data: order_data.into_inner(),
     };
+
+    match redis_manager.send_and_wait(message) {
+        Ok(response) => HttpResponse::Ok().json(response),
+        Err(e) => HttpResponse::InternalServerError().body(format!("Redis error: {}", e)),
+    }
+}
+
+#[get("/margin_positions")]
+async fn margin_positions(
+    order_data: web::Json<GetMarginPositionsPayload>,
+    redis_manager: web::Data<RedisManager>
+) -> impl Responder {
+    let message = MessageToEngine::GetMarginPositions { data: order_data.into_inner() };
 
     match redis_manager.send_and_wait(message) {
         Ok(response) => HttpResponse::Ok().json(response),

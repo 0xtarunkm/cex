@@ -1,4 +1,4 @@
-use actix_web::{web, App, HttpResponse, HttpServer};
+use actix_web::{web::{self, service}, App, HttpResponse, HttpServer};
 use utils::redis_manager::RedisManager;
 
 mod models;
@@ -24,7 +24,8 @@ async fn main() -> std::io::Result<()> {
                         .service(routes::create_order)
                         .service(routes::cancel_order)
                         .service(routes::open_orders)
-                        .service(routes::get_quote),
+                        .service(routes::get_quote)
+                        .service(routes::margin_positions)
                 )
                 .service(web::scope("/depth").service(routes::get_depth))
                 .service(web::scope("/user").service(routes::get_balances)),
