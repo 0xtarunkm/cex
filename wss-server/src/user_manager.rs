@@ -2,8 +2,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::Mutex;
 use tokio_tungstenite::tungstenite::Message;
+use serde_json;
 
-use crate::models::MessageTx;
+use crate::models::{MessageTx, SocketMessage};
 
 pub struct Market {
     clients: HashMap<String, MessageTx>,
@@ -83,6 +84,46 @@ impl UserManager {
             }
         }
         self.user_rooms.remove(user_id);
+    }
+
+    pub fn broadcast_redis_message(&mut self, channel: &str, payload: &str) {
+        let message = serde_json::to_string(&SocketMessage::SendMessage {
+            message: payload.to_string(),
+            room: channel.to_string(),
+        }).unwrap();
+        
+        if let Some(senders) = self.rooms.get_mut(channel) {
+            senders.clients.retain(|_, tx| {
+                tx.send(Message::Text(message.clone()))
+                    .is_ok()
+            });
+        }
+    }
+
+    pub fn broadcast_to_room(&mut self, room: &str, message: &str) {
+        println!("Broadcasting WebSocket message to room: {}", room);
+        let room = room.trim();
+        if let Some(subscribers) = self.rooms.get(room) {
+            println!("Found room with {} clients", subscribers.clients.len());
+            let formatted_message = serde_json::json!({
+                "type": "WS_MESSAGE",
+                "room": room,
+                "message": message
+            }).to_string();
+            
+            for (client_id, tx) in subscribers.clients.iter() {
+                println!("Sending WebSocket message to client {}", client_id);
+                if let Err(e) = tx.send(Message::Text(formatted_message.clone())) {
+                    println!("Failed to send to client {}: {}", client_id, e);
+                }
+            }
+        }
+    }
+
+    pub fn has_subscription(&self, user_id: &str, room: &str) -> bool {
+        self.rooms
+            .get(room)
+            .map_or(false, |market| market.clients.iter().any(|(uid, _)| uid == user_id))
     }
 }
 
