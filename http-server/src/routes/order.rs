@@ -1,81 +1,87 @@
-use actix_web::{delete, get, post, web, HttpResponse, Responder};
+use axum::{
+    extract::{Path, Query, State},
+    Json,
+};
+use serde_json::{json, Value};
 
 use crate::{
     models::{
-        CancelOrderPayload, CreateOrderPayload, GetMarginPositionsPayload, GetOpenOrdersPayload, GetQuoteRequest, MessageToEngine
+        CancelOrderPayload, CreateOrderPayload, GetMarginPositionsPayload, GetOpenOrdersPayload,
+        GetQuoteRequest, MessageToEngine,
     },
-    utils::redis_manager::RedisManager,
+    state::AppState,
 };
 
-#[post("/create")]
-async fn create_order(
-    redis_manager: web::Data<RedisManager>,
-    order_data: web::Json<CreateOrderPayload>,
-) -> impl Responder {
-    let message = MessageToEngine::CreateOrder {
-        data: order_data.into_inner(),
-    };
+pub async fn create_order(
+    State(state): State<AppState>,
+    Json(order_data): Json<CreateOrderPayload>,
+) -> Json<Value> {
+    let message = MessageToEngine::CreateOrder { data: order_data };
 
-    match redis_manager.send_and_wait(message) {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => HttpResponse::InternalServerError().body(format!("Redis error: {}", e)),
+    match state.redis_manager.send_and_wait(message) {
+        Ok(response) => Json(json!(response)),
+        Err(e) => Json(json!({
+            "error": format!("Redis error: {}", e)
+        })),
     }
 }
 
-#[delete("/delete")]
-async fn cancel_order(
-    redis_manager: web::Data<RedisManager>,
-    order_data: web::Json<CancelOrderPayload>,
-) -> impl Responder {
-    let message = MessageToEngine::CancelOrder {
-        data: order_data.into_inner(),
-    };
+pub async fn cancel_order(
+    State(state): State<AppState>,
+    Json(order_data): Json<CancelOrderPayload>,
+) -> Json<Value> {
+    let message = MessageToEngine::CancelOrder { data: order_data };
 
-    match redis_manager.send_and_wait(message) {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => HttpResponse::InternalServerError().body(format!("Redis error: {}", e)),
+    match state.redis_manager.send_and_wait(message) {
+        Ok(response) => Json(json!(response)),
+        Err(e) => Json(json!({
+            "error": format!("Redis error: {}", e)
+        })),
     }
 }
 
-#[get("/get_quote")]
-async fn get_quote(
-    redis_manager: web::Data<RedisManager>,
-    quote_data: web::Json<GetQuoteRequest>,
-) -> impl Responder {
-    let message = MessageToEngine::GetQuote {
-        data: quote_data.into_inner(),
-    };
+pub async fn get_quote(
+    State(state): State<AppState>,
+    Json(quote_data): Json<GetQuoteRequest>,
+) -> Json<Value> {
+    let message = MessageToEngine::GetQuote { data: quote_data };
 
-    match redis_manager.send_and_wait(message) {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => HttpResponse::InternalServerError().body(format!("Redis error: {}", e)),
+    match state.redis_manager.send_and_wait(message) {
+        Ok(response) => Json(json!(response)),
+        Err(e) => Json(json!({
+            "error": format!("Redis error: {}", e)
+        })),
     }
 }
 
-#[get("/open")]
-async fn open_orders(
-    order_data: web::Json<GetOpenOrdersPayload>,
-    redis_manager: web::Data<RedisManager>,
-) -> impl Responder {
+pub async fn open_orders(
+    State(state): State<AppState>,
+    Path((user_id, market)): Path<(String, String)>,
+) -> Json<Value> {
     let message = MessageToEngine::GetOpenOrders {
-        data: order_data.into_inner(),
+        data: GetOpenOrdersPayload { user_id, market },
     };
 
-    match redis_manager.send_and_wait(message) {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => HttpResponse::InternalServerError().body(format!("Redis error: {}", e)),
+    match state.redis_manager.send_and_wait(message) {
+        Ok(response) => Json(json!(response)),
+        Err(e) => Json(json!({
+            "error": format!("Redis error: {}", e)
+        })),
     }
 }
 
-#[get("/margin_positions")]
-async fn margin_positions(
-    order_data: web::Json<GetMarginPositionsPayload>,
-    redis_manager: web::Data<RedisManager>
-) -> impl Responder {
-    let message = MessageToEngine::GetMarginPositions { data: order_data.into_inner() };
+pub async fn margin_positions(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> Json<Value> {
+    let message = MessageToEngine::GetMarginPositions {
+        data: GetMarginPositionsPayload { user_id },
+    };
 
-    match redis_manager.send_and_wait(message) {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => HttpResponse::InternalServerError().body(format!("Redis error: {}", e)),
+    match state.redis_manager.send_and_wait(message) {
+        Ok(response) => Json(json!(response)),
+        Err(e) => Json(json!({
+            "error": format!("Redis error: {}", e)
+        })),
     }
 }

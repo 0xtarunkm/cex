@@ -1,8 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
-use log::{error, info};
 use rust_decimal::Decimal;
 use tokio::{sync::Mutex, time};
+use tracing::{error, info};
 
 use crate::models::{MarginPosition, OrderType, User};
 
@@ -22,6 +22,7 @@ impl PnlMonitor {
     }
 
     pub async fn start_monitoring(&self) {
+        info!("Starting PNL monitoring");
         let mut interval = time::interval(Duration::from_secs(1));
 
         loop {
@@ -81,8 +82,11 @@ impl PnlMonitor {
         price: Decimal,
     ) -> Result<(), String> {
         info!(
-            "Liquidating position for user {}: {} {} @ {}",
-            user.id, position.quantity, position.asset, price
+            user_id = ?user.id,
+            asset = ?position.asset,
+            quantity = ?position.quantity,
+            price = ?price,
+            "Liquidating position"
         );
 
         let realized_pnl = match position.position_type {

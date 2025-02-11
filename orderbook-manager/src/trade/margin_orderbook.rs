@@ -6,8 +6,8 @@ use rust_decimal_macros::dec;
 use tokio::sync::Mutex;
 
 use crate::models::{
-    CreateOrderPayload, Depth, GetQuoteRequest, GetQuoteResponse, MarginOrder, MarginPosition,
-    OrderDetails, OrderSide, OrderType, User,
+    CreateOrderPayload, Depth, GetQuoteResponse, MarginOrder, MarginPosition, OrderDetails,
+    OrderSide, OrderType, User,
 };
 
 pub struct MarginOrderbook {
@@ -270,7 +270,7 @@ impl MarginOrderbook {
                     details.quantity += long.quantity;
                 })
                 .or_insert(OrderDetails {
-                    type_: OrderSide::Buy, 
+                    type_: OrderSide::Buy,
                     quantity: long.quantity,
                 });
         }

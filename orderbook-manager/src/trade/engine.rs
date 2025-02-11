@@ -4,12 +4,13 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tokio::sync::Mutex;
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::{
     models::{
-        Balances, CancelOrderPayload, CreateOrderPayload, MarginOrder,
-        MarginPosition, MarginPositionsPayload, MessageFromApi, MessageToApi, OpenOrdersPayload,
+        Balance, CancelOrderPayload, CreateOrderPayload, MarginOrder, MarginPosition,
+        MarginPositionsPayload, MessageFromApi, MessageToApi, OpenOrdersPayload,
         OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType, SpotOrder, User,
         UserBalancesPayload,
     },
@@ -18,13 +19,14 @@ use crate::{
 
 use super::{MarginOrderbook, SpotOrderbook};
 
+#[allow(dead_code)]
 pub struct Engine {
     pub spot_orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<SpotOrderbook>>>>>,
     pub margin_orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<MarginOrderbook>>>>>,
     pub users: Arc<Mutex<Vec<User>>>,
-    pub price_service: Arc<PriceService>,
+    // pub price_service: Arc<PriceService>,
 }
- 
+
 impl Engine {
     pub fn new() -> Self {
         let mut spot_orderbooks = HashMap::new();
@@ -54,22 +56,22 @@ impl Engine {
             User {
                 id: "1".to_string(),
                 balances: vec![
-                    Balances {
+                    Balance {
                         ticker: "SOL".to_string(),
                         balance: Decimal::from(100),
                         locked_balance: Decimal::from(0),
                     },
-                    Balances {
+                    Balance {
                         ticker: "BTC".to_string(),
                         balance: Decimal::from(100),
                         locked_balance: Decimal::from(0),
                     },
-                    Balances {
+                    Balance {
                         ticker: "ETH".to_string(),
                         balance: Decimal::from(100),
                         locked_balance: Decimal::from(0),
                     },
-                    Balances {
+                    Balance {
                         ticker: "USDC".to_string(),
                         balance: Decimal::from(10_000),
                         locked_balance: Decimal::from(0),
@@ -84,22 +86,22 @@ impl Engine {
             User {
                 id: "2".to_string(),
                 balances: vec![
-                    Balances {
+                    Balance {
                         ticker: "SOL".to_string(),
                         balance: Decimal::from(100),
                         locked_balance: Decimal::from(0),
                     },
-                    Balances {
+                    Balance {
                         ticker: "BTC".to_string(),
                         balance: Decimal::from(100),
                         locked_balance: Decimal::from(0),
                     },
-                    Balances {
+                    Balance {
                         ticker: "ETH".to_string(),
                         balance: Decimal::from(100),
                         locked_balance: Decimal::from(0),
                     },
-                    Balances {
+                    Balance {
                         ticker: "USDC".to_string(),
                         balance: Decimal::from(10_000),
                         locked_balance: Decimal::from(0),
@@ -117,37 +119,45 @@ impl Engine {
         let margin_orderbooks = Arc::new(Mutex::new(margin_orderbooks));
         let users = Arc::new(Mutex::new(users));
 
-        let price_service = Arc::new(PriceService::new(
-            spot_orderbooks.clone(),
-            margin_orderbooks.clone(),
-        ));
+        // let price_service = Arc::new(PriceService::new(
+        //     spot_orderbooks.clone(),
+        //     margin_orderbooks.clone(),
+        // ));
 
-        let price_service_clone = Arc::clone(&price_service);
-        tokio::spawn(async move {
-            price_service_clone.start_price_updates().await;
-        });
+        // let price_service_clone = Arc::clone(&price_service);
+        // tokio::spawn(async move {
+        //     price_service_clone.start_price_updates().await;
+        // });
 
-        let pnl_monitor = PnlMonitor::new(Arc::clone(&users), Arc::clone(&price_service));
+        // let pnl_monitor = PnlMonitor::new(Arc::clone(&users), Arc::clone(&price_service));
 
-        tokio::spawn(async move {
-            pnl_monitor.start_monitoring().await;
-        });
+        // tokio::spawn(async move {
+        //     pnl_monitor.start_monitoring().await;
+        // });
 
         Engine {
             spot_orderbooks,
             margin_orderbooks,
             users,
-            price_service,
+            // price_service,
         }
     }
 
     pub async fn process(&mut self, client_id: String, message: MessageFromApi) {
+        info!(?message, "Processing message from client {}", client_id);
         match message {
             MessageFromApi::CreateOrder { data } => {
+                info!(?data, "Creating order");
                 let result = self.create_order(&data).await;
 
                 match result {
                     Ok((remaining_qty, filled_qty, order_id)) => {
+                        info!(
+                            order_id,
+                            ?remaining_qty,
+                            ?filled_qty,
+                            "Order created successfully"
+                        );
                         let redis_manager = RedisManager::instance();
                         let message = MessageToApi::OrderPlaced {
                             payload: OrderPlacedPayload {
@@ -160,7 +170,7 @@ impl Engine {
                         let _ = redis_manager.send_to_api(&client_id, &message);
                     }
                     Err(e) => {
-                        println!("error: {}", e);
+                        error!("Failed to create order: {}", e);
                         let redis_manager = RedisManager::instance();
                         let message = MessageToApi::OrderCancelled {
                             payload: OrderCancelledPayload {
@@ -173,10 +183,12 @@ impl Engine {
                 }
             }
             MessageFromApi::CancelOrder { data } => {
+                info!(?data, "Cancelling order");
                 let result = self.cancel_order(&data).await;
 
                 match result {
                     Ok(()) => {
+                        info!(order_id = ?data.order_id, "Order cancelled successfully");
                         let redis_manager = RedisManager::instance();
                         let message = MessageToApi::OrderCancelled {
                             payload: OrderCancelledPayload {
@@ -187,7 +199,7 @@ impl Engine {
                         let _ = redis_manager.send_to_api(&client_id, &message);
                     }
                     Err(e) => {
-                        println!("error: {}", e);
+                        error!("Failed to cancel order: {}", e);
                         let redis_manager = RedisManager::instance();
                         let message = MessageToApi::OrderCancelled {
                             payload: OrderCancelledPayload {
@@ -333,6 +345,7 @@ impl Engine {
         match payload.order_type {
             OrderType::MarginLong | OrderType::MarginShort => {
                 if !self.validate_margin_requirements(&payload).await {
+                    error!("Insufficient margin or invalid margin requirements");
                     return Err("Insufficient margin or invalid margin requirements".into());
                 }
 
@@ -410,10 +423,17 @@ impl Engine {
                 }
 
                 let filled_qty = payload.quantity.checked_sub(remaining_qty).unwrap();
+                info!(
+                    remaining_qty = ?remaining_qty,
+                    filled_qty = ?filled_qty,
+                    order_id = ?order_id,
+                    "Order created successfully"
+                );
                 Ok((remaining_qty, filled_qty, order_id))
             }
             OrderType::Spot => {
                 if !self.validate_spot_balance(&payload).await {
+                    error!("Insufficient balance for spot trade");
                     return Err("Insufficient balance for spot trade".into());
                 }
 
@@ -477,6 +497,12 @@ impl Engine {
 
                 let filled_qty = payload.quantity.checked_sub(remaining_qty).unwrap();
 
+                info!(
+                    remaining_qty = ?remaining_qty,
+                    filled_qty = ?filled_qty,
+                    order_id = ?order_id,
+                    "Order created successfully"
+                );
                 Ok((remaining_qty, filled_qty, order_id))
             }
         }
@@ -541,11 +567,18 @@ impl Engine {
             .expect("User not found");
 
         if !user.margin_enabled {
+            warn!(user_id = ?user.id, "Margin trading not enabled for user");
             return false;
         }
 
         let leverage = payload.leverage.unwrap_or(dec!(1));
         if leverage > user.max_leverage {
+            warn!(
+                user_id = ?user.id,
+                requested = ?leverage,
+                max = ?user.max_leverage,
+                "Requested leverage exceeds maximum"
+            );
             return false;
         }
 

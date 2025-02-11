@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
+use serde_json;
 use tokio::sync::Mutex;
 use tokio_tungstenite::tungstenite::Message;
-use serde_json;
 
 use crate::models::{MessageTx, SocketMessage};
 
@@ -90,13 +90,13 @@ impl UserManager {
         let message = serde_json::to_string(&SocketMessage::SendMessage {
             message: payload.to_string(),
             room: channel.to_string(),
-        }).unwrap();
-        
+        })
+        .unwrap();
+
         if let Some(senders) = self.rooms.get_mut(channel) {
-            senders.clients.retain(|_, tx| {
-                tx.send(Message::Text(message.clone()))
-                    .is_ok()
-            });
+            senders
+                .clients
+                .retain(|_, tx| tx.send(Message::Text(message.clone())).is_ok());
         }
     }
 
@@ -109,8 +109,9 @@ impl UserManager {
                 "type": "WS_MESSAGE",
                 "room": room,
                 "message": message
-            }).to_string();
-            
+            })
+            .to_string();
+
             for (client_id, tx) in subscribers.clients.iter() {
                 println!("Sending WebSocket message to client {}", client_id);
                 if let Err(e) = tx.send(Message::Text(formatted_message.clone())) {
@@ -121,9 +122,9 @@ impl UserManager {
     }
 
     pub fn has_subscription(&self, user_id: &str, room: &str) -> bool {
-        self.rooms
-            .get(room)
-            .map_or(false, |market| market.clients.iter().any(|(uid, _)| uid == user_id))
+        self.rooms.get(room).map_or(false, |market| {
+            market.clients.iter().any(|(uid, _)| uid == user_id)
+        })
     }
 }
 

@@ -5,7 +5,7 @@ version.workspace = true
 authors.workspace = true
 
 [dependencies]
-actix-web.workspace = true
+axum.workspace = true
 dotenv.workspace = true
 env_logger.workspace = true
 redis.workspace = true
@@ -13,4 +13,6 @@ rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 uuid.workspace = true

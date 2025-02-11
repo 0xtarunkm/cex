@@ -1,38 +1,55 @@
-use actix_web::{web::{self, service}, App, HttpResponse, HttpServer};
-use utils::redis_manager::RedisManager;
+use axum::{
+    routing::{delete, get, post},
+    Router,
+};
+
+use state::AppState;
+use tracing::{error, info};
 
 mod models;
 mod routes;
+mod state;
 mod utils;
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-    std::env::set_var("RUST_LOG", "debug");
-    env_logger::init();
+#[tokio::main]
+#[tracing::instrument]
+async fn main() {
+    tracing_subscriber::fmt::init();
 
-    let redis_manager = web::Data::new(RedisManager::new());
+    let app_state = AppState::new();
 
-    HttpServer::new(move || {
-        App::new().app_data(redis_manager.clone()).service(
-            web::scope("/api/v1")
-                .route(
-                    "/healthcheck",
-                    web::get().to(|| async { HttpResponse::Ok().json("success: true") }),
+    let app = Router::new()
+        .nest(
+            "/api/v1",
+            Router::new()
+                .route("/healthcheck", get(|| async { "success: true" }))
+                .nest(
+                    "/order",
+                    Router::new()
+                        .route("/create", post(routes::create_order))
+                        .route("/delete", delete(routes::cancel_order))
+                        .route("/open/{user_id}/{market}", get(routes::open_orders))
+                        .route("/quote", post(routes::get_quote))
+                        .route("/margin_positions/{user_id}", get(routes::margin_positions)),
                 )
-                .service(
-                    web::scope("/order")
-                        .service(routes::create_order)
-                        .service(routes::cancel_order)
-                        .service(routes::open_orders)
-                        .service(routes::get_quote)
-                        .service(routes::margin_positions)
+                .nest(
+                    "/user",
+                    Router::new().route("/balances/{user_id}", get(routes::get_balances)),
                 )
-                .service(web::scope("/depth").service(routes::get_depth))
-                .service(web::scope("/user").service(routes::get_balances)),
+                .nest(
+                    "/depth",
+                    Router::new().route("/{market}/{order_type}", get(routes::get_depth)),
+                ),
         )
-    })
-    .workers(4)
-    .bind(("127.0.0.1", 8080))?
-    .run()
-    .await
+        .with_state(app_state);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
+        .await
+        .unwrap();
+
+    info!("Listening on {}", listener.local_addr().unwrap());
+    axum::serve(listener, app).await.unwrap_or_else(|e| {
+        error!("Server error: {}", e);
+        std::process::exit(1);
+    });
 }

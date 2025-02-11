@@ -1,6 +1,6 @@
 mod models;
-mod user_manager;
 mod redis_manager;
+mod user_manager;
 
 use std::sync::Arc;
 
@@ -24,10 +24,10 @@ async fn main() {
         let redis = redis_manager::RedisManager::instance();
         let mut conn = redis.get_connection().unwrap();
         let mut pubsub = conn.as_pubsub();
-        
+
         pubsub.psubscribe(&["trade@*", "depth@*"]).unwrap();
         println!("Redis subscription started");
-        
+
         loop {
             if let Ok(msg) = pubsub.get_message() {
                 let channel = msg.get_channel_name();

@@ -30,8 +30,6 @@ impl RedisManager {
         let msg = pubsub.get_message().unwrap();
         let response: String = msg.get_payload()?;
 
-        println!("response: {}", response);
-
         let parsed_response: MessageFromEngine = serde_json::from_str(&response).map_err(|e| {
             redis::RedisError::from((
                 redis::ErrorKind::ParseError,

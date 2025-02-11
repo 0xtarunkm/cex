@@ -1,7 +1,5 @@
 use lazy_static::lazy_static;
-use redis::{Client, Connection, PubSubCommands, RedisResult};
-
-use crate::models::SocketMessage;
+use redis::{Client, Connection, RedisResult};
 
 lazy_static! {
     static ref REDIS_MANAGER: RedisManager = RedisManager::new();

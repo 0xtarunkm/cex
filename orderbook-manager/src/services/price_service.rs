@@ -3,9 +3,11 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use chrono::Utc;
 use rust_decimal::Decimal;
 use tokio::sync::Mutex;
+use tracing::{error, info};
 
 use crate::trade::{MarginOrderbook, SpotOrderbook};
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct PriceInfo {
     pub last_trade_price: Option<Decimal>,
@@ -14,6 +16,7 @@ pub struct PriceInfo {
     pub timestamp: i64,
 }
 
+#[allow(dead_code)]
 pub struct PriceService {
     prices: Arc<Mutex<HashMap<String, PriceInfo>>>,
     spot_orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<SpotOrderbook>>>>>,
@@ -33,6 +36,7 @@ impl PriceService {
     }
 
     pub async fn update_trade_price(&self, market: &str, price: Decimal) {
+        info!(?market, ?price, "Updating trade price");
         let mut prices = self.prices.lock().await;
         let now = Utc::now().timestamp();
 
@@ -74,7 +78,10 @@ impl PriceService {
 
         for market in markets {
             if let Some(mid_price) = self.calculate_mid_price(market).await {
-                self.update_trade_price(&market, mid_price).await;
+                info!(?market, ?mid_price, "Calculated new mid price");
+                self.update_trade_price(market, mid_price).await;
+            } else {
+                error!(?market, "Failed to calculate mid price");
             }
         }
     }

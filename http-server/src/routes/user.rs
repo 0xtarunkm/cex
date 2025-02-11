@@ -1,21 +1,26 @@
-use actix_web::{post, web, HttpResponse, Responder};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
+use serde_json::{json, Value};
 
 use crate::{
     models::{GetUserBalancesPayload, MessageToEngine},
-    utils::redis_manager::RedisManager,
+    state::AppState,
 };
 
-#[post("/balances")]
-async fn get_balances(
-    balances_data: web::Json<GetUserBalancesPayload>,
-    redis_manager: web::Data<RedisManager>,
-) -> impl Responder {
+pub async fn get_balances(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> Json<Value> {
     let message = MessageToEngine::GetUserBalances {
-        data: balances_data.into_inner(),
+        data: GetUserBalancesPayload { user_id },
     };
 
-    match redis_manager.send_and_wait(message) {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => HttpResponse::InternalServerError().body(format!("Redis error: {}", e)),
+    match state.redis_manager.send_and_wait(message) {
+        Ok(response) => Json(json!(response)),
+        Err(e) => Json(json!({
+            "error": format!("Redis error: {}", e)
+        })),
     }
 }
