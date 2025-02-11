@@ -1,5 +1,8 @@
 use lazy_static::lazy_static;
-use redis::{Client, Connection, RedisResult};
+use redis::{Client, RedisResult};
+
+#[allow(deprecated)]
+use redis::aio::Connection as AsyncConnection;
 
 lazy_static! {
     static ref REDIS_MANAGER: RedisManager = RedisManager::new();
@@ -19,7 +22,8 @@ impl RedisManager {
         &REDIS_MANAGER
     }
 
-    pub fn get_connection(&self) -> RedisResult<Connection> {
-        self.client.get_connection()
+    #[allow(deprecated)]
+    pub async fn get_async_connection(&self) -> RedisResult<AsyncConnection> {
+        self.client.get_async_connection().await
     }
 }

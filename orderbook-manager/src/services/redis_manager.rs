@@ -33,7 +33,7 @@ impl RedisManager {
         conn.publish(client_id, message_json)
     }
 
-    pub fn _publish_message(&self, channel: &str, message: &Value) -> RedisResult<()> {
+    pub fn publish_message(&self, channel: &str, message: &Value) -> RedisResult<()> {
         let mut conn = self.get_connection()?;
         conn.publish(channel, message.to_string())
     }

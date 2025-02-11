@@ -100,6 +100,7 @@ impl UserManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn broadcast_to_room(&mut self, room: &str, message: &str) {
         println!("Broadcasting WebSocket message to room: {}", room);
         let room = room.trim();

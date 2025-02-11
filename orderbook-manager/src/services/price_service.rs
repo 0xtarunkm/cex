@@ -4,7 +4,7 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use serde::Serialize;
 use tokio::sync::Mutex;
-use tracing::{error, info};
+use tracing::info;
 
 use crate::trade::{MarginOrderbook, SpotOrderbook};
 
@@ -82,7 +82,7 @@ impl PriceService {
                 info!(?market, ?mid_price, "Calculated new mid price");
                 self.update_trade_price(market, mid_price).await;
             } else {
-                error!(?market, "orderbook is empty");
+                // error!(?market, "orderbook is empty");
             }
         }
     }
@@ -92,6 +92,7 @@ impl PriceService {
         prices.get(market).map(|info| info.mark_price)
     }
 
+    #[allow(dead_code)]
     pub async fn get_price_info(&self, market: &str) -> Option<PriceInfo> {
         let prices = self.prices.lock().await;
         prices.get(market).cloned()

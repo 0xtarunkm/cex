@@ -6,6 +6,7 @@ use rust_decimal_macros::dec;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use uuid::Uuid;
+use serde_json::{self, json};
 
 use crate::{
     models::{
@@ -168,6 +169,16 @@ impl Engine {
                         };
 
                         let _ = redis_manager.send_to_api(&client_id, &message);
+                        let trade_info = json!({
+                            "price": data.price,
+                            "quantity": filled_qty,
+                            "side": data.side,
+                            "timestamp": Utc::now().timestamp()
+                        });
+                        let _ = redis_manager.publish_message(
+                            &format!("trade@{}", data.market),
+                            &trade_info,
+                        );
                     }
                     Err(e) => {
                         error!("Failed to create order: {}", e);
@@ -460,6 +471,24 @@ impl Engine {
                     order_id = ?order_id,
                     "Order created successfully"
                 );
+
+                // Publish updates
+                let redis_manager = RedisManager::instance();
+                let depth = orderbook_guard.get_depth();
+                let price_info = orderbook_guard.get_price_info().await;
+                
+                let _ = redis_manager.publish_message(
+                    &format!("depth@{}", payload.market),
+                    &serde_json::to_value(depth).unwrap(),
+                );
+                
+                if let Some(price) = price_info {
+                    let _ = redis_manager.publish_message(
+                        &format!("ticker@{}", payload.market),
+                        &serde_json::to_value(price).unwrap(),
+                    );
+                }
+
                 Ok((remaining_qty, filled_qty, order_id))
             }
             OrderType::Spot => {
@@ -506,6 +535,23 @@ impl Engine {
                                 .cmp(&a.price)
                                 .then_with(|| a.timestamp.cmp(&b.timestamp))
                         });
+
+                        // Publish updates
+                        let redis_manager = RedisManager::instance();
+                        let depth = orderbook_guard.get_depth();
+                        let price_info = orderbook_guard.get_price_info().await;
+                        
+                        let _ = redis_manager.publish_message(
+                            &format!("depth@{}", payload.market),
+                            &serde_json::to_value(depth).unwrap(),
+                        );
+                        
+                        if let Some(price) = price_info {
+                            let _ = redis_manager.publish_message(
+                                &format!("ticker@{}", payload.market),
+                                &serde_json::to_value(price).unwrap(),
+                            );
+                        }
                     }
                     OrderSide::Sell => {
                         let mut orderbook_guard = orderbook.lock().await;
@@ -523,6 +569,23 @@ impl Engine {
                                 .cmp(&b.price)
                                 .then_with(|| a.timestamp.cmp(&b.timestamp))
                         });
+
+                        // Publish updates
+                        let redis_manager = RedisManager::instance();
+                        let depth = orderbook_guard.get_depth();
+                        let price_info = orderbook_guard.get_price_info().await;
+                        
+                        let _ = redis_manager.publish_message(
+                            &format!("depth@{}", payload.market),
+                            &serde_json::to_value(depth).unwrap(),
+                        );
+                        
+                        if let Some(price) = price_info {
+                            let _ = redis_manager.publish_message(
+                                &format!("ticker@{}", payload.market),
+                                &serde_json::to_value(price).unwrap(),
+                            );
+                        }
                     }
                 }
 

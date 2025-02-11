@@ -11,38 +11,41 @@ use tokio::{
     sync::{mpsc, Mutex},
 };
 use tokio_tungstenite::{accept_async, tungstenite::Message};
+use tracing::info;
 use user_manager::{MarketState, UserManager};
 
 #[tokio::main]
 async fn main() {
-    let market_state = Arc::new(Mutex::new(UserManager::new()));
-    let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
+    tracing_subscriber::fmt::init();
 
-    // Spawn Redis subscription handler
+    let market_state = Arc::new(Mutex::new(UserManager::new()));
+    let listener = TcpListener::bind("0.0.0.0:8081").await.unwrap();
+
     let market_state_redis = market_state.clone();
     tokio::spawn(async move {
         let redis = redis_manager::RedisManager::instance();
-        let mut conn = redis.get_connection().unwrap();
-        let mut pubsub = conn.as_pubsub();
+        let conn = redis.get_async_connection().await.unwrap();
+        #[allow(deprecated)]
+        let mut pubsub = conn.into_pubsub();
 
-        pubsub.psubscribe(&["trade@*", "depth@*"]).unwrap();
-        println!("Redis subscription started");
+        pubsub.psubscribe("trade@*").await.unwrap();
+        pubsub.psubscribe("depth@*").await.unwrap();
+        info!("Redis subscription started");
 
         loop {
-            if let Ok(msg) = pubsub.get_message() {
-                let channel = msg.get_channel_name();
+            if let Some(msg) = pubsub.on_message().next().await {
+                let channel = msg.get_channel::<String>().unwrap();
                 if let Ok(payload) = msg.get_payload::<String>() {
-                    println!("Redis received on {}: {}", channel, payload);
+                    info!("Redis received on {}: {}", channel, payload);
                     let mut market = market_state_redis.lock().await;
-                    // Use a different method for Redis messages
-                    market.broadcast_redis_message(channel, &payload);
+                    market.broadcast_redis_message(&channel, &payload);
                 }
             }
         }
     });
 
     while let Ok((stream, addr)) = listener.accept().await {
-        println!("New connection from {}", addr);
+        info!("New connection from {}", addr);
         let market_state = market_state.clone();
         tokio::spawn(handle_connection(stream, market_state));
     }
@@ -56,23 +59,21 @@ async fn handle_connection(stream: TcpStream, market_state: MarketState) {
 
     let (tx, mut rx) = mpsc::unbounded_channel();
 
-    // Add a ping mechanism
     let ping_tx = tx.clone();
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
             if let Err(e) = ping_tx.send(Message::Ping(vec![])) {
-                println!("Failed to send ping: {:?}", e);
+                info!("Failed to send ping: {:?}", e);
                 break;
             }
         }
     });
 
-    // Message sending task
     tokio::spawn(async move {
         while let Some(message) = rx.recv().await {
             if let Err(e) = ws_sender.send(message).await {
-                println!("Failed to send WebSocket message: {:?}", e);
+                info!("Failed to send WebSocket message: {:?}", e);
                 break;
             }
         }
@@ -90,7 +91,7 @@ async fn handle_connection(stream: TcpStream, market_state: MarketState) {
                             }
                             if !market.has_subscription(&user_id, &room) {
                                 market.subscribe_to_room(user_id.clone(), room.clone(), tx.clone());
-                                println!("{user_id} subscribed to {room}");
+                                info!("{user_id} subscribed to {room}");
                             }
                         }
                         SocketMessage::SendMessage { message, room } => {
@@ -107,6 +108,6 @@ async fn handle_connection(stream: TcpStream, market_state: MarketState) {
     if !user_id.is_empty() {
         let mut market = market_state.lock().await;
         market.remove_user(&user_id);
-        println!("{user_id} disconnected");
+        info!("{user_id} disconnected");
     }
 }
