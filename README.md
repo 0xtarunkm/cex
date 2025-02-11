@@ -1,51 +1,97 @@
+
 # CEX (Centralized Exchange)
 
-A high-performance centralized cryptocurrency exchange implementation in Rust, featuring spot and margin trading capabilities.
+A high-performance centralized cryptocurrency exchange implementation in Rust, featuring spot and margin trading capabilities with real-time market data distribution.
 
-## Features
-![Screenshot 2025-01-23 at 7 01 12 PM](https://github.com/user-attachments/assets/b2e2a138-2a9b-44ce-b073-3252a4edd8fa)
+## 🏗 Architecture
+<img width="1064" alt="Screenshot 2025-02-11 at 5 50 06 PM" src="https://github.com/user-attachments/assets/6b31f943-ba80-435c-b7f7-7f06b9d34259" />
 
-- **Trading Pairs**: Support for multiple trading pairs (SOL/USDC, BTC/USDC, ETH/USDC)
-- **Order Types**:
-  - Spot trading
-  - Margin trading (Long/Short positions)
-  - Support for leverage up to 10x
-- **Order Book Management**:
-  - Real-time order matching engine
-  - Market depth tracking
-  - Quote generation
-- **User Management**:
-  - Balance tracking
-  - Position management
-  - Margin account support
-
-## Architecture
-
-The project consists of two main components:
+The project consists of three main components:
 
 1. **HTTP Server** (`http-server/`):
    - RESTful API endpoints for order management
-   - Built with Actix-web framework
+   - Built with Axum framework
    - Redis-based communication with the order book manager
 
 2. **Orderbook Manager** (`orderbook-manager/`):
    - Core trading engine implementation
    - Real-time order matching
-   - Balance and position management
+   - Position and PnL management
+   - Price service for mark and index prices
    - Market depth maintenance
 
-## API Endpoints
+3. **WebSocket Server** (`websocket-server/`):
+   - Real-time market data streaming
+   - Room-based subscription system
+   - Redis pub/sub integration
+   - Client connection management
+  
+4. **Wallet Manager** (`wallet-manager/`):
+   - Wallet management
+   - Balance tracking
+   - Transaction history
+   - Onramp and offramp support
 
-### Order Management
-- `POST /api/v1/order/create` - Create new order
-- `DELETE /api/v1/order/delete` - Cancel existing order
-- `GET /api/v1/order/get_quote` - Get quote for potential trade
-- `GET /api/v1/order/open` - Get user's open orders
+## 🚀 Features
 
-### Market Data
-- `POST /api/v1/depth` - Get order book depth
+- **Trading Capabilities**:
+  - Spot trading with limit orders
+  - Margin trading with up to 10x leverage
+  - Real-time order matching
+  - Position tracking and PnL monitoring
 
-## Setup
+- **Market Data**:
+  - Real-time orderbook depth
+  - Trade execution broadcasts
+  - Price updates (mark, index, last)
+  - WebSocket streaming
+
+- **Risk Management**:
+  - Margin requirement validation
+  - Position monitoring
+  - Liquidation price calculation
+  - Balance checks
+
+## 💡 API Access
+
+### REST API Endpoints
+Base URL: `http://localhost:8080/api/v1`
+
+#### Order Operations
+- `POST /order/create` - Create new order
+- `DELETE /order/delete` - Cancel existing order
+- `GET /order/open/{user_id}/{market}` - Get user's open orders
+- `POST /order/quote` - Get quote for potential trade
+- `GET /order/margin_positions/{user_id}` - Get margin positions
+
+#### User Operations
+- `GET /user/balances/{user_id}` - Get user balances
+- `POST /user/onramp` - Handle user deposits
+
+#### Market Data
+- `GET /depth/{market}/{order_type}` - Get order book depth
+- `GET /ticker/{market}/{order_type}` - Get market ticker
+
+### WebSocket API
+Server URL: `ws://localhost:8081`
+
+#### Market Data Channels
+- `SOL_USDC` - SOL/USDC market
+- `BTC_USDC` - BTC/USDC market
+- `ETH_USDC` - ETH/USDC market
+
+#### Message Types
+
+- `SUBSCRIBE` - Subscribe to a market
+- `UNSUBSCRIBE` - Unsubscribe from a market
+
+#### Market Data Channels
+
+- `trade` - Trade executions
+- `depth` - Order book depth
+- `ticker` - Market ticker
+
+## 🏃‍♂️ Getting Started
 
 1. Prerequisites:
    - Rust toolchain
@@ -53,78 +99,82 @@ The project consists of two main components:
    - Redis server
 
 2. Start Dependencies:
-   ```bash
-   # Start Redis and database services
-   docker compose up -d
-   ```
 
-3. Start Services:
-   ```bash
-   # Start the orderbook manager
-   cd orderbook-manager
-   cargo run
+```bash
+docker compose up -d
+```
 
-   # In a new terminal, start the HTTP server
-   cd http-server
-   cargo run
-   ```
+3. Run the server:
 
-The HTTP server will be available at `127.0.0.1:8080` by default.
+```bash
+cargo run --bin http-server
+```
 
-## Implementation Details
+4. Run the websocket server:
 
-- **Concurrent Order Processing**: Uses Rust's mutex and Arc for thread-safe order book management
-- **Real-time Communication**: Redis-based message passing between components
-- **Market Safety**: Implements balance checks and margin requirements validation
-- **Position Management**: Tracks user positions and enforces leverage limits
+```bash
+cargo run --bin websocket-server
+```
 
-## Trading Flows
+5. Run the orderbook manager:
+
+```bash
+cargo run --bin orderbook-manager
+```
+
+6. Run the wallet manager:
+
+```bash
+cargo run --bin wallet-manager
+```
+
+
+## 📊 Trading Flows
 
 ### Spot Trading
-1. **Balance Validation**:
-   - For Buy orders: Checks if user has sufficient USDC (price * quantity)
-   - For Sell orders: Checks if user has sufficient base asset (e.g., SOL)
-
-2. **Order Processing**:
-   - Locks the required balance
-   - Matches against existing orders in the orderbook
-   - If partially filled, places remaining amount in orderbook
-   - Updates user balances after successful trades
+1. Balance validation
+2. Order matching
+3. Real-time execution
+4. Balance updates
+5. WebSocket notifications
 
 ### Margin Trading
-1. **Margin Requirements Validation**:
-   - Verifies user has margin trading enabled
-   - Checks if leverage is within limits (max 10x)
-   - Validates required margin: (price * quantity) / leverage
-   - For shorts: Additional 10% safety margin is required
+1. Margin requirement checks
+2. Position creation/update
+3. PnL monitoring
+4. Liquidation price tracking
+5. Real-time position updates
 
-2. **Long Position Flow**:
-   - Requires initial margin: (price * quantity) / leverage
-   - Locks the required margin amount
-   - Creates or updates existing long position
-   - Calculates liquidation price based on entry price and leverage
-   - Tracks unrealized PnL
+## 🔧 Implementation Details
 
-3. **Short Position Flow**:
-   - Requires initial margin with safety multiplier
-   - Locks the required margin amount
-   - Creates or updates existing short position
-   - Calculates liquidation price based on entry price and leverage
-   - Credits user with borrowed asset value
-   - Tracks unrealized PnL
+### Data Structures
+- Priority queue-based orderbooks
+- Position tracking system
+- Real-time price service
+- WebSocket subscription management
 
-4. **Position Management**:
-   - Continuously updates unrealized PnL
-   - Monitors for liquidation price breaches
-   - Allows position closure through opposite orders
-   - Updates realized PnL on position closure
+### Communication
+- Redis for inter-service messaging
+- WebSocket for real-time updates
+- REST API for order management
 
-5. **Liquidation**:
-   - Triggers when market price crosses liquidation threshold
-   - Liquidation price = Entry price ± (Entry price * Liquidation threshold / Leverage)
-   - For longs: Liquidation below entry price
-   - For shorts: Liquidation above entry price
+### Monitoring
+- Continuous PnL calculation
+- Position risk assessment
+- Balance tracking
+- Market data broadcasting
 
-## Development Status
+## 📈 Development Status
 
-This is a work in progress. Current implementation includes core trading functionality with spot and margin trading support.
+This is a work in progress with core functionality implemented:
+- ✅ Order matching engine
+- ✅ Margin trading support
+- ✅ Real-time market data
+- ✅ WebSocket streaming
+- ✅ Basic risk management
+
+---
+Built with 🦀 Rust and ❤️
+
+
+
