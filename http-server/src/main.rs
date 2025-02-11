@@ -9,7 +9,7 @@ use tracing::{error, info};
 mod models;
 mod routes;
 mod state;
-mod utils;
+mod services;
 
 #[tokio::main]
 async fn main() {
@@ -33,7 +33,9 @@ async fn main() {
                 )
                 .nest(
                     "/user",
-                    Router::new().route("/balances/{user_id}", get(routes::get_balances)),
+                    Router::new()
+                        .route("/balances/{user_id}", get(routes::get_balances))
+                        .route("/onramp", post(routes::onramp)),
                 )
                 .nest(
                     "/depth",

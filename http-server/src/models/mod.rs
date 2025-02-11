@@ -18,3 +18,10 @@ pub enum OrderSide {
     Buy,
     Sell,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OnRampPayload {
+    pub user_id: String,
+    pub network: String,
+    pub token: String,
+}

@@ -6,8 +6,17 @@ authors.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+bip39 = "2.1.0"
 futures = "0.3.31"
 hex = "0.4.3"
+hmac = "0.12.1"
+lazy_static.workspace = true
+pbkdf2 = "0.12.2"
+rand.workspace = true
+redis.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10.8"
 solana-sdk = "2.1.1"
 tokio = { workspace = true, features = ["full"] }
 tonic = "0.12.3"

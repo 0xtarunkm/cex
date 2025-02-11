@@ -1,5 +1,5 @@
 [workspace]
-members = ["http-server", "orderbook-manager", "wallet-manager", "wss-server"]
+members = ["http-server", "orderbook-manager", "wallet-manager", "websocket-server"]
 
 resolver = "2"
 

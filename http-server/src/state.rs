@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::utils::redis_manager::RedisManager;
+use crate::services::redis_manager::RedisManager;
 
 #[derive(Clone)]
 pub struct AppState {
