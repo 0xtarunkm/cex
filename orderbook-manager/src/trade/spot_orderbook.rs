@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use chrono::Utc;
 use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 use tokio::sync::Mutex;
 
-use crate::models::{
+use crate::{models::{
     CreateOrderPayload, Depth, GetQuoteResponse, OrderDetails, OrderSide, SpotOrder, User,
-};
+}, services::price_service::PriceInfo};
 
+#[allow(dead_code)]
 pub struct SpotOrderbook {
     pub bids: Vec<SpotOrder>,
     pub asks: Vec<SpotOrder>,
@@ -222,5 +225,31 @@ impl SpotOrderbook {
                 quote_balance.balance = quote_balance.balance.checked_sub(trade_value).unwrap();
             }
         }
+    }
+
+    pub async fn get_price_info(&self) -> Option<PriceInfo> {
+        let now = Utc::now().timestamp();
+        if self.bids.is_empty() && self.asks.is_empty() {
+            return Some(PriceInfo {
+                last_trade_price: None,
+                mark_price: dec!(100),
+                index_price: None,
+                timestamp: now,
+            });
+        }
+        let best_bid = self.bids.first().map(|o| o.price);
+        let best_ask = self.asks.first().map(|o| o.price);
+        let mark_price = match (best_bid, best_ask) {
+            (Some(b), Some(a)) => (b + a) / dec!(2),
+            (Some(b), None) => b,
+            (None, Some(a)) => a,
+            (None, None) => dec!(100),
+        };
+        Some(PriceInfo {
+            last_trade_price: None,
+            mark_price,
+            index_price: None,
+            timestamp: now,
+        })
     }
 }

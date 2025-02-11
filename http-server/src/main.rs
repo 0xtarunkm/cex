@@ -39,6 +39,10 @@ async fn main() {
                 .nest(
                     "/depth",
                     Router::new().route("/{market}/{order_type}", get(routes::get_depth)),
+                )
+                .nest(
+                    "/ticker",
+                    Router::new().route("/{market}/{order_type}", get(routes::get_ticker)),
                 ),
         )
         .with_state(app_state);

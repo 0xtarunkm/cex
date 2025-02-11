@@ -2,13 +2,14 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use chrono::Utc;
 use rust_decimal::Decimal;
+use serde::Serialize;
 use tokio::sync::Mutex;
 use tracing::{error, info};
 
 use crate::trade::{MarginOrderbook, SpotOrderbook};
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PriceInfo {
     pub last_trade_price: Option<Decimal>,
     pub mark_price: Decimal,
@@ -81,7 +82,7 @@ impl PriceService {
                 info!(?market, ?mid_price, "Calculated new mid price");
                 self.update_trade_price(market, mid_price).await;
             } else {
-                error!(?market, "Failed to calculate mid price");
+                error!(?market, "orderbook is empty");
             }
         }
     }

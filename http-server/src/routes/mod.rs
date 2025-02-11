@@ -6,3 +6,6 @@ pub use depth::*;
 
 pub mod user;
 pub use user::*;
+
+pub mod ticker;
+pub use ticker::*;

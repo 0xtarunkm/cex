@@ -103,7 +103,6 @@ mod spot_orderbook_tests {
     async fn test_order_matching() {
         let mut engine = Engine::new();
 
-        // Create a sell order first
         let sell_order = CreateOrderPayload {
             user_id: "1".to_string(),
             market: "SOL_USDC".to_string(),
@@ -117,7 +116,6 @@ mod spot_orderbook_tests {
         let message = MessageFromApi::CreateOrder { data: sell_order };
         engine.process("test_client".to_string(), message).await;
 
-        // Create a matching buy order
         let buy_order = CreateOrderPayload {
             user_id: "2".to_string(),
             market: "SOL_USDC".to_string(),
@@ -131,25 +129,23 @@ mod spot_orderbook_tests {
         let message = MessageFromApi::CreateOrder { data: buy_order };
         engine.process("test_client".to_string(), message).await;
 
-        // Verify partial fill
         let orderbooks = engine.spot_orderbooks.lock().await;
         let orderbook = orderbooks.get("SOL_USDC").unwrap().lock().await;
 
         assert_eq!(orderbook.asks.len(), 1);
-        assert_eq!(orderbook.asks[0].quantity, dec!(1)); // Original quantity was 2, should be 1 after partial fill
-        assert_eq!(orderbook.bids.len(), 0); // Buy order should be fully filled
+        assert_eq!(orderbook.asks[0].quantity, dec!(1));
+        assert_eq!(orderbook.bids.len(), 0);
     }
 
     #[tokio::test]
     async fn test_insufficient_balance() {
         let mut engine = Engine::new();
 
-        // Try to buy with insufficient USDC balance
         let buy_order = CreateOrderPayload {
             user_id: "1".to_string(),
             market: "SOL_USDC".to_string(),
-            price: dec!(20000),   // Very high price
-            quantity: dec!(1000), // Large quantity
+            price: dec!(20000),
+            quantity: dec!(1000),
             side: OrderSide::Buy,
             order_type: OrderType::Spot,
             leverage: None,
@@ -161,6 +157,6 @@ mod spot_orderbook_tests {
         let orderbooks = engine.spot_orderbooks.lock().await;
         let orderbook = orderbooks.get("SOL_USDC").unwrap().lock().await;
 
-        assert_eq!(orderbook.bids.len(), 0); // Order should not be placed due to insufficient balance
+        assert_eq!(orderbook.bids.len(), 0);
     }
 }

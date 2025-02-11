@@ -4,12 +4,15 @@ use std::sync::Arc;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tokio::sync::Mutex;
+use chrono::Utc;
 
 use crate::models::{
     CreateOrderPayload, Depth, GetQuoteResponse, MarginOrder, MarginPosition, OrderDetails,
     OrderSide, OrderType, User,
 };
+use crate::services::price_service::PriceInfo;
 
+#[allow(dead_code)]
 pub struct MarginOrderbook {
     pub longs: Vec<MarginOrder>,
     pub shorts: Vec<MarginOrder>,
@@ -59,7 +62,6 @@ impl MarginOrderbook {
                         users,
                         base_asset,
                         leverage,
-                        OrderType::MarginLong,
                     )
                     .await;
 
@@ -95,7 +97,6 @@ impl MarginOrderbook {
                         users,
                         base_asset,
                         leverage,
-                        OrderType::MarginShort,
                     )
                     .await;
 
@@ -124,7 +125,6 @@ impl MarginOrderbook {
         users: &mut Arc<Mutex<Vec<User>>>,
         base_asset: &str,
         leverage: Decimal,
-        order_type: OrderType,
     ) {
         let mut users_guard = users.lock().await;
         let trade_value = price * quantity;
@@ -288,5 +288,31 @@ impl MarginOrderbook {
         }
 
         Depth { orders: depth }
+    }
+
+    pub async fn get_price_info(&self) -> Option<PriceInfo> {
+        let now = Utc::now().timestamp();
+        if self.longs.is_empty() && self.shorts.is_empty() {
+            return Some(PriceInfo {
+                last_trade_price: None,
+                mark_price: dec!(100),
+                index_price: None,
+                timestamp: now,
+            });
+        }
+        let best_long = self.longs.first().map(|o| o.price);
+        let best_short = self.shorts.first().map(|o| o.price);
+        let mark_price = match (best_long, best_short) {
+            (Some(l), Some(s)) => (l + s) / dec!(2),
+            (Some(l), None) => l,
+            (None, Some(s)) => s,
+            (None, None) => dec!(100),
+        };
+        Some(PriceInfo {
+            last_trade_price: None,
+            mark_price,
+            index_price: None,
+            timestamp: now,
+        })
     }
 }

@@ -1,6 +1,8 @@
+use crate::services::price_service::PriceInfo;
+
 use super::{Depth, GetQuoteResponse, MarginPositionsPayload, SpotOrder, UserBalancesPayload};
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type")]
@@ -19,6 +21,11 @@ pub enum MessageToApi {
     UserBalances { payload: UserBalancesPayload },
     #[serde(rename = "GET_MARGIN_POSITIONS")]
     GetMarginPositions { payload: MarginPositionsPayload },
+    #[serde(rename = "TICKER_PRICE")]
+    TickerPrice { 
+        market: String,
+        price: Option<PriceInfo> 
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -37,3 +44,4 @@ pub struct OrderCancelledPayload {
 pub struct OpenOrdersPayload {
     pub open_orders: Vec<SpotOrder>,
 }
+

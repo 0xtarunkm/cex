@@ -20,6 +20,11 @@ pub enum MessageFromEngine {
     GetMarginPositions { payload: MarginPositionsPayload },
     #[serde(rename = "SEND_QUOTE")]
     SendQuote { payload: GetQuoteResponse },
+    #[serde(rename = "TICKER_PRICE")]
+    TickerPrice { 
+        market: String,
+        price: Option<PriceInfo> 
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,4 +97,12 @@ pub struct GetQuoteResponse {
     pub avg_price: Decimal,
     pub quantity: Decimal,
     pub total_cost: Decimal,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PriceInfo {
+    pub last_trade_price: Option<Decimal>,
+    pub mark_price: Decimal,
+    pub index_price: Option<Decimal>,
+    pub timestamp: i64,
 }

@@ -14,7 +14,7 @@ use crate::{
         OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType, SpotOrder, User,
         UserBalancesPayload,
     },
-    services::{pnl_service::PnlMonitor, price_service::PriceService, redis_manager::RedisManager},
+    services::{pnl_service::PnlMonitor, price_service::{PriceInfo, PriceService}, redis_manager::RedisManager},
 };
 
 use super::{MarginOrderbook, SpotOrderbook};
@@ -24,7 +24,7 @@ pub struct Engine {
     pub spot_orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<SpotOrderbook>>>>>,
     pub margin_orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<MarginOrderbook>>>>>,
     pub users: Arc<Mutex<Vec<User>>>,
-    // pub price_service: Arc<PriceService>,
+    pub price_service: Arc<PriceService>,
 }
 
 impl Engine {
@@ -119,27 +119,27 @@ impl Engine {
         let margin_orderbooks = Arc::new(Mutex::new(margin_orderbooks));
         let users = Arc::new(Mutex::new(users));
 
-        // let price_service = Arc::new(PriceService::new(
-        //     spot_orderbooks.clone(),
-        //     margin_orderbooks.clone(),
-        // ));
+        let price_service = Arc::new(PriceService::new(
+            spot_orderbooks.clone(),
+            margin_orderbooks.clone(),
+        ));
 
-        // let price_service_clone = Arc::clone(&price_service);
-        // tokio::spawn(async move {
-        //     price_service_clone.start_price_updates().await;
-        // });
+        let price_service_clone = Arc::clone(&price_service);
+        tokio::spawn(async move {
+            price_service_clone.start_price_updates().await;
+        });
 
-        // let pnl_monitor = PnlMonitor::new(Arc::clone(&users), Arc::clone(&price_service));
+        let pnl_monitor = PnlMonitor::new(Arc::clone(&users), Arc::clone(&price_service));
 
-        // tokio::spawn(async move {
-        //     pnl_monitor.start_monitoring().await;
-        // });
+        tokio::spawn(async move {
+            pnl_monitor.start_monitoring().await;
+        });
 
         Engine {
             spot_orderbooks,
             margin_orderbooks,
             users,
-            // price_service,
+            price_service,
         }
     }
 
@@ -231,10 +231,8 @@ impl Engine {
                             .get(&data.market)
                             .ok_or("Market not found")
                             .unwrap();
-                        let quote = orderbook
-                            .lock()
-                            .await
-                            .get_quote_detail(data.quantity, data.side);
+                        let orderbook = orderbook.lock().await;
+                        let quote = orderbook.get_quote_detail(data.quantity, data.side);
                         quote
                     }
                 };
@@ -315,14 +313,12 @@ impl Engine {
             }
             MessageFromApi::GetMarginPositions { data } => {
                 let mut users = self.users.lock().await;
-                println!("Getting positions for user_id: {}", data.user_id);
+                info!(?data, "Getting margin positions for user {}", data.user_id);
+
                 let user = users
                     .iter_mut()
                     .find(|u| u.id == data.user_id)
                     .expect("User not found");
-
-                println!("User found: {:?}", user);
-                println!("Margin positions: {:?}", user.margin_positions);
 
                 let redis_manager = RedisManager::instance();
                 let message = MessageToApi::GetMarginPositions {
@@ -333,6 +329,41 @@ impl Engine {
 
                 let _ = redis_manager.send_to_api(&client_id, &message);
             }
+            MessageFromApi::GetTicker { market, order_type } => {
+                let price = match order_type {
+                    OrderType::MarginLong | OrderType::MarginShort => {
+                        let orderbooks = self.margin_orderbooks.lock().await;
+                        let orderbook = orderbooks
+                            .get(&market)
+                            .ok_or("Market not found")
+                            .unwrap();
+                        let orderbook = orderbook.lock().await;
+                        let price = orderbook.get_price_info().await;
+                        price
+                    }
+                    OrderType::Spot => {
+                        let orderbooks = self.spot_orderbooks.lock().await;
+                        let orderbook = orderbooks
+                            .get(&market)
+                            .ok_or("Market not found")
+                            .unwrap();
+                        let orderbook = orderbook.lock().await;
+                        let price = orderbook.get_price_info().await;
+                        price
+                    }
+                };
+                let redis_manager = RedisManager::instance();
+                let message = MessageToApi::TickerPrice { 
+                    market,
+                    price: price.map(|p| PriceInfo {
+                        last_trade_price: p.last_trade_price,
+                        mark_price: p.mark_price,
+                        index_price: p.index_price,
+                        timestamp: p.timestamp,
+                    }),
+                };
+                let _ = redis_manager.send_to_api(&client_id, &message);
+            },
         }
     }
 
