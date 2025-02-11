@@ -54,9 +54,9 @@ impl Engine {
         }
 
         let users = vec![
-            User {
-                id: "1".to_string(),
-                balances: vec![
+            {
+                let mut user = User::new("1".to_string());
+                user.balances = vec![
                     Balance {
                         ticker: "SOL".to_string(),
                         balance: Decimal::from(100),
@@ -77,16 +77,12 @@ impl Engine {
                         balance: Decimal::from(10_000),
                         locked_balance: Decimal::from(0),
                     },
-                ],
-                margin_enabled: true,
-                margin_positions: vec![],
-                margin_used: Decimal::from(0),
-                max_leverage: Decimal::from(10),
-                realized_pnl: Decimal::from(0),
+                ];
+                user
             },
-            User {
-                id: "2".to_string(),
-                balances: vec![
+            {
+                let mut user = User::new("2".to_string());
+                user.balances = vec![
                     Balance {
                         ticker: "SOL".to_string(),
                         balance: Decimal::from(100),
@@ -107,12 +103,8 @@ impl Engine {
                         balance: Decimal::from(10_000),
                         locked_balance: Decimal::from(0),
                     },
-                ],
-                margin_enabled: true,
-                margin_positions: vec![],
-                margin_used: Decimal::from(0),
-                max_leverage: Decimal::from(10),
-                realized_pnl: Decimal::from(0),
+                ];
+                user
             },
         ];
 

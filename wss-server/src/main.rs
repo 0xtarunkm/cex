@@ -14,6 +14,7 @@ use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::info;
 use user_manager::{MarketState, UserManager};
 
+#[allow(deprecated)]
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -25,7 +26,6 @@ async fn main() {
     tokio::spawn(async move {
         let redis = redis_manager::RedisManager::instance();
         let conn = redis.get_async_connection().await.unwrap();
-        #[allow(deprecated)]
         let mut pubsub = conn.into_pubsub();
 
         pubsub.psubscribe("trade@*").await.unwrap();

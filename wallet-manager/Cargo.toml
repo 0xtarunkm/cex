@@ -1,0 +1,18 @@
+[package]
+name = "wallet-manager"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+futures = "0.3.31"
+hex = "0.4.3"
+solana-sdk = "2.1.1"
+tokio = { workspace = true, features = ["full"] }
+tonic = "0.12.3"
+tonic-health = "0.12.3"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+yellowstone-grpc-client = "5.0.0"
+yellowstone-grpc-proto = "5.0.0"

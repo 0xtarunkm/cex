@@ -12,7 +12,6 @@ mod state;
 mod utils;
 
 #[tokio::main]
-#[tracing::instrument]
 async fn main() {
     tracing_subscriber::fmt::init();
 
