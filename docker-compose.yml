@@ -1,18 +1,39 @@
 version: "3.8"
 
 services:
-  http_server:
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - app_network
+
+  orderbook_manager:
     build:
       context: .
-      dockerfile: http-server/Dockerfile
+      dockerfile: orderbook-manager/Dockerfile
       target: final
-    ports:
-      - "8080:8080"
+    environment:
+      - RUST_LOG=debug
+      - REDIS_URL=redis://redis:6379
+      - HOST=0.0.0.0
     depends_on:
-      - postgres
-      - redis
-      - orderbook_manager
-      - websocket_server
+      redis:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - app_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200m"
+        max-file: "10"
 
   websocket_server:
     build:
@@ -21,17 +42,55 @@ services:
       target: final
     ports:
       - "8081:8081"
+    environment:
+      - RUST_LOG=debug
+      - REDIS_URL=redis://redis:6379
+      - HOST=0.0.0.0
+      - PORT=8081
     depends_on:
-      - redis
-      - orderbook_manager
+      redis:
+        condition: service_healthy
+      orderbook_manager:
+        condition: service_started
+    restart: on-failure
+    networks:
+      - app_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200m"
+        max-file: "10"
 
-  orderbook_manager:
+  http_server:
     build:
       context: .
-      dockerfile: orderbook-manager/Dockerfile
+      dockerfile: http-server/Dockerfile
       target: final
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=debug
+      - HOST=0.0.0.0
+      - PORT=8080
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgres://admin:admin123@postgres:5432/cex-db
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      orderbook_manager:
+        condition: service_started
+      websocket_server:
+        condition: service_started
+    restart: on-failure
+    networks:
+      - app_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200m"
+        max-file: "10"
 
   postgres:
     image: postgres:17.2-alpine3.21
@@ -42,9 +101,19 @@ services:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
       POSTGRES_DB: cex-db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d cex-db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
 
-  redis:
-    image: redis:latest
-    container_name: redis
-    ports:
-      - "6379:6379"
+volumes:
+  postgres_data:
+
+networks:
+  app_network:
+    driver: bridge
