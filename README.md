@@ -53,81 +53,14 @@ The project consists of three main components:
   - Balance checks
 
 ## API Access
+[Postman Collection](https://www.postman.com/solar-trinity-740656/cex/overview)
 
-### REST API Endpoints
-Base URL: `http://localhost:8080/api/v1`
-
-#### Order Operations
-- `POST /order/create` - Create new order
-- `DELETE /order/delete` - Cancel existing order
-- `GET /order/open/{user_id}/{market}` - Get user's open orders
-- `POST /order/quote` - Get quote for potential trade
-- `GET /order/margin_positions/{user_id}` - Get margin positions
-
-#### User Operations
-- `GET /user/balances/{user_id}` - Get user balances
-- `POST /user/onramp` - Handle user deposits
-
-#### Market Data
-- `GET /depth/{market}/{order_type}` - Get order book depth
-- `GET /ticker/{market}/{order_type}` - Get market ticker
-
-### WebSocket API
-Server URL: `ws://localhost:8081`
-
-#### Market Data Channels
-- `SOL_USDC` - SOL/USDC market
-- `BTC_USDC` - BTC/USDC market
-- `ETH_USDC` - ETH/USDC market
-
-#### Message Types
-
-- `SUBSCRIBE` - Subscribe to a market
-- `UNSUBSCRIBE` - Unsubscribe from a market
-
-#### Market Data Channels
-
-- `trade` - Trade executions
-- `depth` - Order book depth
-- `ticker` - Market ticker
-
-## Getting Started
-
-1. Prerequisites:
-   - Rust toolchain
-   - Docker and Docker Compose
-   - Redis server
-
-2. Start Dependencies:
+## Setup
 
 ```bash
-docker compose up -d
+docker compose up --build -d
 ```
-
-3. Run the server:
-
-```bash
-cargo run --bin http-server
-```
-
-4. Run the websocket server:
-
-```bash
-cargo run --bin websocket-server
-```
-
-5. Run the orderbook manager:
-
-```bash
-cargo run --bin orderbook-manager
-```
-
-6. Run the wallet manager:
-
-```bash
-cargo run --bin wallet-manager
-```
-
+yes that's it!
 
 ## Trading Flows
 
