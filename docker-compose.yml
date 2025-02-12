@@ -1,6 +1,38 @@
 version: "3.8"
 
 services:
+  http_server:
+    build:
+      context: .
+      dockerfile: http-server/Dockerfile
+      target: final
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+      - orderbook_manager
+      - websocket_server
+
+  websocket_server:
+    build:
+      context: .
+      dockerfile: websocket-server/Dockerfile
+      target: final
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+      - orderbook_manager
+
+  orderbook_manager:
+    build:
+      context: .
+      dockerfile: orderbook-manager/Dockerfile
+      target: final
+    depends_on:
+      - redis
+
   postgres:
     image: postgres:17.2-alpine3.21
     container_name: database
@@ -10,6 +42,7 @@ services:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
       POSTGRES_DB: cex-db
+
   redis:
     image: redis:latest
     container_name: redis
