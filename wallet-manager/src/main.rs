@@ -1,35 +1,29 @@
 use std::collections::HashMap;
-
 use anyhow::Result;
 use constants::ONRAMP_CHANNEL;
+use db::{db_connection, db_queries};
+use dotenv::dotenv;
+use models::IncomingMessage;
 use redis::Commands;
-use services::{account_monitor::GrpcStreamManager, redis_manager::RedisManager};
-use solana_sdk::{signature::Keypair, signer::Signer};
+use services::{
+    account_monitor::GrpcStreamManager, redis_manager::RedisManager, wallet_service::WalletService,
+};
 use tracing::{error, info};
-use yellowstone_grpc_proto::geyser::{CommitmentLevel, SubscribeRequest, SubscribeRequestFilterAccounts};
-
+use yellowstone_grpc_proto::geyser::{
+    CommitmentLevel, SubscribeRequest, SubscribeRequestFilterAccounts,
+};
 use serde_json;
-use serde::Deserialize;
+
 
 mod constants;
+mod models;
 mod services;
-
-#[derive(Debug, Deserialize)]
-struct IncomingMessage {
-    client_id: String,
-    message: WalletMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct WalletMessage {
-    network: String,
-    token: String,
-    user_id: String,
-}
+mod db;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
+    dotenv().ok();
 
     let mut users: Vec<String> = Vec::new();
 
@@ -64,19 +58,27 @@ async fn main() -> Result<()> {
     let redis_manager = RedisManager::instance();
     let mut conn = redis_manager.get_connection()?;
 
+    let mut wallet_service = WalletService::new();
+
     loop {
         let response: Option<(String, String)> = conn.brpop(ONRAMP_CHANNEL, 0.0)?;
 
         match response {
             Some((_, message)) => {
-                info!("Received message: {}", message);
                 match serde_json::from_str::<IncomingMessage>(&message) {
                     Ok(parsed_message) => {
-                        let keypair = Keypair::new();
-                        let public_key = keypair.pubkey().to_string();
+                        let pool = db_connection::get_connection_pool().await?;
+                        
+                        let (public_key, private_key) = wallet_service.generate_wallet()?;
                         users.push(public_key.clone());
 
-                        info!("Sending public key to client: {}", public_key);
+                        db_queries::create_user_wallet(
+                            &pool,
+                            parsed_message.user_id,
+                            &public_key,
+                            &private_key
+                        ).await?;
+
                         redis_manager.send_to_api(&parsed_message.client_id, &public_key)?;
                     },
                     Err(e) => {

@@ -17,7 +17,7 @@ mod spot_orderbook_tests {
             quantity: dec!(2),
             side: OrderSide::Buy,
             order_type: OrderType::Spot,
-            leverage: None,
+            leverage: Some(dec!(1)),
         };
 
         let message = MessageFromApi::CreateOrder { data: order };
@@ -43,7 +43,7 @@ mod spot_orderbook_tests {
             quantity: dec!(1),
             side: OrderSide::Sell,
             order_type: OrderType::Spot,
-            leverage: None,
+            leverage: Some(dec!(1)),
         };
 
         let message = MessageFromApi::CreateOrder { data: order };
@@ -62,7 +62,6 @@ mod spot_orderbook_tests {
     async fn test_cancel_spot_order() {
         let mut engine = Engine::new();
 
-        // First create an order
         let create_order = CreateOrderPayload {
             user_id: "1".to_string(),
             market: "SOL_USDC".to_string(),
@@ -70,20 +69,18 @@ mod spot_orderbook_tests {
             quantity: dec!(2),
             side: OrderSide::Buy,
             order_type: OrderType::Spot,
-            leverage: None,
+            leverage: Some(dec!(1)),
         };
 
         let message = MessageFromApi::CreateOrder { data: create_order };
         engine.process("test_client".to_string(), message).await;
 
-        // Get the order ID
         let order_id = {
             let orderbooks = engine.spot_orderbooks.lock().await;
             let orderbook = orderbooks.get("SOL_USDC").unwrap().lock().await;
             orderbook.bids[0].id.clone()
-        }; // immutable borrow ends here
+        };
 
-        // Now we can mutably borrow engine
         let cancel_order = CancelOrderPayload {
             order_id,
             user_id: "1".to_string(),
@@ -93,7 +90,6 @@ mod spot_orderbook_tests {
         let message = MessageFromApi::CancelOrder { data: cancel_order };
         engine.process("test_client".to_string(), message).await;
 
-        // Verify order was cancelled
         let orderbooks = engine.spot_orderbooks.lock().await;
         let orderbook = orderbooks.get("SOL_USDC").unwrap().lock().await;
         assert_eq!(orderbook.bids.len(), 0);
@@ -110,7 +106,7 @@ mod spot_orderbook_tests {
             quantity: dec!(2),
             side: OrderSide::Sell,
             order_type: OrderType::Spot,
-            leverage: None,
+            leverage: Some(dec!(1)),
         };
 
         let message = MessageFromApi::CreateOrder { data: sell_order };
@@ -123,7 +119,7 @@ mod spot_orderbook_tests {
             quantity: dec!(1),
             side: OrderSide::Buy,
             order_type: OrderType::Spot,
-            leverage: None,
+            leverage: Some(dec!(1)),
         };
 
         let message = MessageFromApi::CreateOrder { data: buy_order };
@@ -148,7 +144,7 @@ mod spot_orderbook_tests {
             quantity: dec!(1000),
             side: OrderSide::Buy,
             order_type: OrderType::Spot,
-            leverage: None,
+            leverage: Some(dec!(1)),
         };
 
         let message = MessageFromApi::CreateOrder { data: buy_order };
@@ -156,7 +152,7 @@ mod spot_orderbook_tests {
 
         let orderbooks = engine.spot_orderbooks.lock().await;
         let orderbook = orderbooks.get("SOL_USDC").unwrap().lock().await;
-
+        
         assert_eq!(orderbook.bids.len(), 0);
     }
 }

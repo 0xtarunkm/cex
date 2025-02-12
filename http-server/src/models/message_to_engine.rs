@@ -20,7 +20,10 @@ pub enum MessageToEngine {
     #[serde(rename = "GET_MARGIN_POSITIONS")]
     GetMarginPositions { data: GetMarginPositionsPayload },
     #[serde(rename = "GET_TICKER")]
-    GetTicker { market: String, order_type: OrderType },
+    GetTicker {
+        market: String,
+        order_type: OrderType,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]

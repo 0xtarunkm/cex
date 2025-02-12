@@ -3,10 +3,10 @@ use std::{collections::HashMap, sync::Arc};
 use chrono::Utc;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use serde_json::{self, json};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use uuid::Uuid;
-use serde_json::{self, json};
 
 use crate::{
     models::{
@@ -15,7 +15,11 @@ use crate::{
         OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType, SpotOrder, User,
         UserBalancesPayload,
     },
-    services::{pnl_service::PnlMonitor, price_service::{PriceInfo, PriceService}, redis_manager::RedisManager},
+    services::{     
+        pnl_service::PnlMonitor,
+        price_service::{PriceInfo, PriceService},
+        redis_manager::RedisManager,
+    },
 };
 
 use super::{MarginOrderbook, SpotOrderbook};
@@ -106,6 +110,32 @@ impl Engine {
                 ];
                 user
             },
+            {
+                let mut user = User::new("3".to_string());
+                user.balances = vec![
+                    Balance {
+                        ticker: "SOL".to_string(),
+                        balance: Decimal::from(100),
+                        locked_balance: Decimal::from(0),
+                    },
+                    Balance {
+                        ticker: "BTC".to_string(),
+                        balance: Decimal::from(100),
+                        locked_balance: Decimal::from(0),
+                    },
+                    Balance {
+                        ticker: "ETH".to_string(),
+                        balance: Decimal::from(100),
+                        locked_balance: Decimal::from(0),
+                    },
+                    Balance {
+                        ticker: "USDC".to_string(),
+                        balance: Decimal::from(10_000),
+                        locked_balance: Decimal::from(0),
+                    },
+                ];
+                user
+            },
         ];
 
         let spot_orderbooks = Arc::new(Mutex::new(spot_orderbooks));
@@ -167,10 +197,8 @@ impl Engine {
                             "side": data.side,
                             "timestamp": Utc::now().timestamp()
                         });
-                        let _ = redis_manager.publish_message(
-                            &format!("trade@{}", data.market),
-                            &trade_info,
-                        );
+                        let _ = redis_manager
+                            .publish_message(&format!("trade@{}", data.market), &trade_info);
                     }
                     Err(e) => {
                         error!("Failed to create order: {}", e);
@@ -336,27 +364,21 @@ impl Engine {
                 let price = match order_type {
                     OrderType::MarginLong | OrderType::MarginShort => {
                         let orderbooks = self.margin_orderbooks.lock().await;
-                        let orderbook = orderbooks
-                            .get(&market)
-                            .ok_or("Market not found")
-                            .unwrap();
+                        let orderbook = orderbooks.get(&market).ok_or("Market not found").unwrap();
                         let orderbook = orderbook.lock().await;
                         let price = orderbook.get_price_info().await;
                         price
                     }
                     OrderType::Spot => {
                         let orderbooks = self.spot_orderbooks.lock().await;
-                        let orderbook = orderbooks
-                            .get(&market)
-                            .ok_or("Market not found")
-                            .unwrap();
+                        let orderbook = orderbooks.get(&market).ok_or("Market not found").unwrap();
                         let orderbook = orderbook.lock().await;
                         let price = orderbook.get_price_info().await;
                         price
                     }
                 };
                 let redis_manager = RedisManager::instance();
-                let message = MessageToApi::TickerPrice { 
+                let message = MessageToApi::TickerPrice {
                     market,
                     price: price.map(|p| PriceInfo {
                         last_trade_price: p.last_trade_price,
@@ -366,7 +388,7 @@ impl Engine {
                     }),
                 };
                 let _ = redis_manager.send_to_api(&client_id, &message);
-            },
+            }
         }
     }
 
@@ -410,7 +432,7 @@ impl Engine {
                         asset: base_asset,
                         quantity: remaining_qty,
                         avg_price: payload.price,
-                        position_type: payload.order_type.clone(),
+                        position_type: payload.order_type,
                         unrealized_pnl: None,
                         liquidation_price: None,
                     };
@@ -468,12 +490,12 @@ impl Engine {
                 let redis_manager = RedisManager::instance();
                 let depth = orderbook_guard.get_depth();
                 let price_info = orderbook_guard.get_price_info().await;
-                
+
                 let _ = redis_manager.publish_message(
                     &format!("depth@{}", payload.market),
                     &serde_json::to_value(depth).unwrap(),
                 );
-                
+
                 if let Some(price) = price_info {
                     let _ = redis_manager.publish_message(
                         &format!("ticker@{}", payload.market),
@@ -532,12 +554,12 @@ impl Engine {
                         let redis_manager = RedisManager::instance();
                         let depth = orderbook_guard.get_depth();
                         let price_info = orderbook_guard.get_price_info().await;
-                        
+
                         let _ = redis_manager.publish_message(
                             &format!("depth@{}", payload.market),
                             &serde_json::to_value(depth).unwrap(),
                         );
-                        
+
                         if let Some(price) = price_info {
                             let _ = redis_manager.publish_message(
                                 &format!("ticker@{}", payload.market),
@@ -566,12 +588,12 @@ impl Engine {
                         let redis_manager = RedisManager::instance();
                         let depth = orderbook_guard.get_depth();
                         let price_info = orderbook_guard.get_price_info().await;
-                        
+
                         let _ = redis_manager.publish_message(
                             &format!("depth@{}", payload.market),
                             &serde_json::to_value(depth).unwrap(),
                         );
-                        
+
                         if let Some(price) = price_info {
                             let _ = redis_manager.publish_message(
                                 &format!("ticker@{}", payload.market),

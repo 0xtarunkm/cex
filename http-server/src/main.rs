@@ -8,8 +8,8 @@ use tracing::{error, info};
 
 mod models;
 mod routes;
-mod state;
 mod services;
+mod state;
 
 #[tokio::main]
 async fn main() {
@@ -26,10 +26,10 @@ async fn main() {
                     "/order",
                     Router::new()
                         .route("/create", post(routes::create_order))
-                        .route("/delete", delete(routes::cancel_order))
+                        .route("/cancel", delete(routes::cancel_order))
                         .route("/open/{user_id}/{market}", get(routes::open_orders))
                         .route("/quote", post(routes::get_quote))
-                        .route("/margin_positions/{user_id}", get(routes::margin_positions)),
+                        .route("/margin-positions/{user_id}", get(routes::margin_positions)),
                 )
                 .nest(
                     "/user",

@@ -6,9 +6,12 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tokio::sync::Mutex;
 
-use crate::{models::{
-    CreateOrderPayload, Depth, GetQuoteResponse, OrderDetails, OrderSide, SpotOrder, User,
-}, services::price_service::PriceInfo};
+use crate::{
+    models::{
+        CreateOrderPayload, Depth, GetQuoteResponse, OrderDetails, OrderSide, SpotOrder, User,
+    },
+    services::price_service::PriceInfo,
+};
 
 #[allow(dead_code)]
 pub struct SpotOrderbook {

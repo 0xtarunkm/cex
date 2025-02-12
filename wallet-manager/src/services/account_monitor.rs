@@ -6,20 +6,39 @@ use solana_sdk::pubkey::Pubkey;
 use tokio::sync::Mutex;
 use tonic::{metadata::errors::InvalidMetadataValue, transport::Endpoint};
 use tonic_health::pb::health_client::HealthClient;
-use tracing::{info, error};
+use tracing::{error, info};
 use yellowstone_grpc_client::{GeyserGrpcClient, InterceptorXToken};
-use yellowstone_grpc_proto::geyser::{geyser_client::GeyserClient, subscribe_update::UpdateOneof, SubscribeRequest, SubscribeRequestPing};
+use yellowstone_grpc_proto::geyser::{
+    geyser_client::GeyserClient, subscribe_update::UpdateOneof, SubscribeRequest,
+    SubscribeRequestPing,
+};
+use crate::db::{db_queries, db_connection};
+use bigdecimal::BigDecimal;
 
 pub struct GrpcStreamManager {
     client: GeyserGrpcClient<InterceptorXToken>,
     is_connected: bool,
     reconnect_attempts: u32,
     max_reconnect_attempts: u32,
-    reconnect_interval: Duration
+    reconnect_interval: Duration,
 }
 
 impl GrpcStreamManager {
-    pub fn handle_account_update(&self, slot: u64, account_info: &yellowstone_grpc_proto::geyser::SubscribeUpdateAccountInfo) {
+    pub async fn handle_account_update(
+        &self,
+        slot: u64,
+        account_info: &yellowstone_grpc_proto::geyser::SubscribeUpdateAccountInfo,
+    ) -> Result<()> {
+        let pool = db_connection::get_connection_pool().await?;
+        
+        let pubkey = Pubkey::try_from(account_info.pubkey.clone())
+            .expect("valid pubkey")
+            .to_string();
+        
+        let lamports = BigDecimal::from(account_info.lamports);
+        
+        db_queries::update_solana_balance(&pool, &pubkey, lamports).await?;
+        
         info!(
         "ACCOUNT UPDATE RECEIVED:\nSlot: {}\nPubkey: {}\nLamports: {}\nOwner: {}\nData length: {}\nExecutable: {}\nWrite version: {}\n",
             slot,
@@ -34,11 +53,16 @@ impl GrpcStreamManager {
         if !account_info.data.is_empty() {
             info!("Data (hex): {}", hex::encode(&account_info.data));
         }
+        Ok(())
     }
 
     pub async fn new(endpoint: &str, x_token: &str) -> Result<Arc<Mutex<GrpcStreamManager>>> {
         let interceptor = InterceptorXToken {
-            x_token: Some(x_token.parse().map_err(|e: InvalidMetadataValue| anyhow::Error::from(e))?),
+            x_token: Some(
+                x_token
+                    .parse()
+                    .map_err(|e: InvalidMetadataValue| anyhow::Error::from(e))?,
+            ),
             x_request_snapshot: true,
         };
 
@@ -65,7 +89,10 @@ impl GrpcStreamManager {
 
     pub async fn connect(&mut self, request: SubscribeRequest) -> Result<()> {
         let request = request.clone();
-        let (mut subscribe_tx, mut stream) = self.client.subscribe_with_request(Some(request.clone())).await?;
+        let (mut subscribe_tx, mut stream) = self
+            .client
+            .subscribe_with_request(Some(request.clone()))
+            .await?;
 
         self.is_connected = true;
         self.reconnect_attempts = 0;
@@ -76,7 +103,7 @@ impl GrpcStreamManager {
                     match msg.update_oneof {
                         Some(UpdateOneof::Account(account)) => {
                             if let Some(account_info) = account.account {
-                                self.handle_account_update(account.slot, &account_info);
+                                self.handle_account_update(account.slot, &account_info).await?;
                             }
                         }
                         Some(UpdateOneof::Ping(_)) => {

@@ -53,13 +53,13 @@ impl MarginPosition {
         });
     }
 
-    pub fn calculate_liquidation_price(&mut self, leverage: Decimal, maintenance_margin: Decimal) {
+    pub fn calculate_liquidation_price(&mut self, leverage: Decimal) {
         self.liquidation_price = Some(match self.position_type {
             OrderType::MarginLong => {
-                self.avg_price * (Decimal::ONE - maintenance_margin * leverage)
+                self.avg_price - (self.avg_price / leverage)
             }
             OrderType::MarginShort => {
-                self.avg_price * (Decimal::ONE + maintenance_margin * leverage)
+                self.avg_price + (self.avg_price / leverage)
             }
             _ => Decimal::ZERO,
         });

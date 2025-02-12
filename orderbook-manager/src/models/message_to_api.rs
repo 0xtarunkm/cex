@@ -22,9 +22,9 @@ pub enum MessageToApi {
     #[serde(rename = "GET_MARGIN_POSITIONS")]
     GetMarginPositions { payload: MarginPositionsPayload },
     #[serde(rename = "TICKER_PRICE")]
-    TickerPrice { 
+    TickerPrice {
         market: String,
-        price: Option<PriceInfo> 
+        price: Option<PriceInfo>,
     },
 }
 
@@ -44,4 +44,3 @@ pub struct OrderCancelledPayload {
 pub struct OpenOrdersPayload {
     pub open_orders: Vec<SpotOrder>,
 }
-

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use chrono::Utc;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tokio::sync::Mutex;
-use chrono::Utc;
 
 use crate::models::{
     CreateOrderPayload, Depth, GetQuoteResponse, MarginOrder, MarginPosition, OrderDetails,
@@ -37,7 +37,6 @@ impl MarginOrderbook {
         base_asset: &str,
     ) -> Decimal {
         let mut remaining_qty = order.quantity;
-        let leverage = order.leverage.unwrap_or(dec!(1));
 
         match order.order_type {
             OrderType::MarginLong => {
@@ -61,7 +60,7 @@ impl MarginOrderbook {
                         fill_qty,
                         users,
                         base_asset,
-                        leverage,
+                        order.leverage.unwrap_or(dec!(1)),
                     )
                     .await;
 
@@ -96,7 +95,7 @@ impl MarginOrderbook {
                         fill_qty,
                         users,
                         base_asset,
-                        leverage,
+                        order.leverage.unwrap_or(dec!(1)),
                     )
                     .await;
 
@@ -128,16 +127,14 @@ impl MarginOrderbook {
     ) {
         let mut users_guard = users.lock().await;
         let trade_value = price * quantity;
-        let margin_required = trade_value / leverage;
-        let maintenance_margin = dec!(0.05);
+
+        let long_margin = trade_value / leverage;
+        let short_margin = (trade_value / leverage) * dec!(1.1);
 
         if let Some(long_user) = users_guard.iter_mut().find(|u| u.id == long_user_id) {
             if let Some(usdc_balance) = long_user.balances.iter_mut().find(|b| b.ticker == "USDC") {
-                usdc_balance.locked_balance = usdc_balance
-                    .locked_balance
-                    .checked_sub(margin_required)
-                    .unwrap();
-                usdc_balance.balance = usdc_balance.balance.checked_sub(margin_required).unwrap();
+                usdc_balance.balance = usdc_balance.balance - long_margin;
+                usdc_balance.locked_balance = long_margin;
             }
 
             if let Some(pos) = long_user
@@ -149,8 +146,7 @@ impl MarginOrderbook {
                 pos.quantity += quantity;
                 pos.avg_price =
                     ((pos.avg_price * old_quantity) + (price * quantity)) / pos.quantity;
-                pos.calculate_unrealized_pnl(price);
-                pos.calculate_liquidation_price(leverage, maintenance_margin);
+                pos.calculate_liquidation_price(leverage);
             } else {
                 let mut new_position = MarginPosition {
                     asset: base_asset.to_string(),
@@ -160,52 +156,40 @@ impl MarginOrderbook {
                     unrealized_pnl: None,
                     liquidation_price: None,
                 };
-                new_position.calculate_unrealized_pnl(price);
-                new_position.calculate_liquidation_price(leverage, maintenance_margin);
+                new_position.calculate_liquidation_price(leverage);
                 long_user.margin_positions.push(new_position);
             }
-
-            long_user.margin_used += margin_required;
         }
 
         if let Some(short_user) = users_guard.iter_mut().find(|u| u.id == short_user_id) {
             if let Some(usdc_balance) = short_user.balances.iter_mut().find(|b| b.ticker == "USDC")
             {
-                let safety_multiplier = dec!(1.1);
-                let short_margin = margin_required * safety_multiplier;
-                usdc_balance.locked_balance = usdc_balance
-                    .locked_balance
-                    .checked_sub(short_margin)
-                    .unwrap();
-                usdc_balance.balance = usdc_balance.balance.checked_sub(short_margin).unwrap();
+                println!(
+                    "DEBUG: Short user initial - Balance: {}, Locked: {}",
+                    usdc_balance.balance, usdc_balance.locked_balance
+                );
+
+                usdc_balance.balance = usdc_balance.balance - short_margin;
+                usdc_balance.locked_balance = short_margin;
+
+                println!(
+                    "DEBUG: Short user after margin - Balance: {}, Locked: {}",
+                    usdc_balance.balance, usdc_balance.locked_balance
+                );
             }
 
-            if let Some(pos) = short_user
+            if let Some(position) = short_user
                 .margin_positions
                 .iter_mut()
                 .find(|p| p.asset == base_asset && p.position_type == OrderType::MarginShort)
             {
-                let old_quantity = pos.quantity;
-                pos.quantity += quantity;
-                pos.avg_price =
-                    ((pos.avg_price * old_quantity) + (price * quantity)) / pos.quantity;
-                pos.calculate_unrealized_pnl(price);
-                pos.calculate_liquidation_price(leverage, maintenance_margin);
-            } else {
-                let mut new_position = MarginPosition {
-                    asset: base_asset.to_string(),
-                    quantity,
-                    avg_price: price,
-                    position_type: OrderType::MarginShort,
-                    unrealized_pnl: None,
-                    liquidation_price: None,
-                };
-                new_position.calculate_unrealized_pnl(price);
-                new_position.calculate_liquidation_price(leverage, maintenance_margin);
-                short_user.margin_positions.push(new_position);
+                position.quantity = position.quantity.checked_sub(quantity).unwrap();
+                if position.quantity.is_zero() {
+                    short_user
+                        .margin_positions
+                        .retain(|p| !p.quantity.is_zero());
+                }
             }
-
-            short_user.margin_used += margin_required;
         }
     }
 

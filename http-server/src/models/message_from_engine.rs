@@ -21,9 +21,9 @@ pub enum MessageFromEngine {
     #[serde(rename = "SEND_QUOTE")]
     SendQuote { payload: GetQuoteResponse },
     #[serde(rename = "TICKER_PRICE")]
-    TickerPrice { 
+    TickerPrice {
         market: String,
-        price: Option<PriceInfo> 
+        price: Option<PriceInfo>,
     },
 }
 
