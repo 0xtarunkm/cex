@@ -15,7 +15,7 @@ pub struct RedisManager {
 
 impl RedisManager {
     fn new() -> Self {
-        let client = redis::Client::open("redis://redis:6379").unwrap();
+        let client = redis::Client::open("redis://0.0.0.0:6379").unwrap();
         RedisManager { client }
     }
 

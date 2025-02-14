@@ -30,7 +30,6 @@ async fn main() {
                         .route("/open/{user_id}/{market}", get(routes::open_orders))
                         .route("/quote", post(routes::get_quote))
                         .route("/margin-positions/{user_id}", get(routes::margin_positions))
-                        .route("/close-position/{user_id}", post(routes::margin_positions)),
                 )
                 .nest(
                     "/user",

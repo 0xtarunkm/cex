@@ -39,6 +39,54 @@ impl MarginOrderbook {
         let mut remaining_qty = order.quantity;
 
         match order.order_type {
+            OrderType::MarginShort => {
+                // First check and remove existing position
+                {
+                    let mut users_guard = users.lock().await;
+                    if let Some(user) = users_guard.iter_mut().find(|u| u.id == order.user_id) {
+                        if let Some(pos_idx) = user.margin_positions.iter().position(|p| 
+                            p.asset == base_asset && p.position_type == OrderType::MarginLong
+                        ) {
+                            user.margin_positions.remove(pos_idx);
+                        }
+                    }
+                } // users_guard is dropped here
+                
+                // Continue with normal order matching
+                let mut i = 0;
+                while i < self.longs.len() {
+                    if remaining_qty <= Decimal::ZERO {
+                        break;
+                    }
+
+                    let long = &self.longs[i];
+                    if long.price < order.price {
+                        break;
+                    }
+
+                    let fill_qty = remaining_qty.min(long.quantity);
+
+                    self.update_margin_positions(
+                        &long.user_id,
+                        &order.user_id,
+                        long.price,
+                        fill_qty,
+                        users,
+                        base_asset,
+                        order.leverage.unwrap_or(dec!(1)),
+                    )
+                    .await;
+
+                    remaining_qty -= fill_qty;
+                    self.longs[i].quantity -= fill_qty;
+
+                    if self.longs[i].quantity == Decimal::ZERO {
+                        self.longs.remove(i);
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
             OrderType::MarginLong => {
                 let mut i = 0;
                 while i < self.shorts.len() {
@@ -74,41 +122,6 @@ impl MarginOrderbook {
                     }
                 }
             }
-            OrderType::MarginShort => {
-                let mut i = 0;
-                while i < self.longs.len() {
-                    if remaining_qty <= Decimal::ZERO {
-                        break;
-                    }
-
-                    let long = &self.longs[i];
-                    if long.price < order.price {
-                        break;
-                    }
-
-                    let fill_qty = remaining_qty.min(long.quantity);
-
-                    self.update_margin_positions(
-                        &long.user_id,
-                        &order.user_id,
-                        long.price,
-                        fill_qty,
-                        users,
-                        base_asset,
-                        order.leverage.unwrap_or(dec!(1)),
-                    )
-                    .await;
-
-                    remaining_qty -= fill_qty;
-                    self.longs[i].quantity -= fill_qty;
-
-                    if self.longs[i].quantity == Decimal::ZERO {
-                        self.longs.remove(i);
-                    } else {
-                        i += 1;
-                    }
-                }
-            }
             OrderType::Spot => {}
         }
 
@@ -131,66 +144,194 @@ impl MarginOrderbook {
         let long_margin = trade_value / leverage;
         let short_margin = (trade_value / leverage) * dec!(1.1);
 
+        println!("DEBUG: Processing position update for user {} with quantity {}", long_user_id, quantity);
+
+        // Handle long user position
         if let Some(long_user) = users_guard.iter_mut().find(|u| u.id == long_user_id) {
-            if let Some(usdc_balance) = long_user.balances.iter_mut().find(|b| b.ticker == "USDC") {
-                usdc_balance.balance = usdc_balance.balance - long_margin;
-                usdc_balance.locked_balance = long_margin;
-            }
-
-            if let Some(pos) = long_user
+            // Check for existing short position first
+            if let Some(pos_idx) = long_user
                 .margin_positions
-                .iter_mut()
-                .find(|p| p.asset == base_asset && p.position_type == OrderType::MarginLong)
+                .iter()
+                .position(|p| p.asset == base_asset && p.position_type == OrderType::MarginShort)
             {
-                let old_quantity = pos.quantity;
-                pos.quantity += quantity;
-                pos.avg_price =
-                    ((pos.avg_price * old_quantity) + (price * quantity)) / pos.quantity;
-                pos.calculate_liquidation_price(leverage);
+                println!("DEBUG: Found existing short position for netting");
+                let short_qty = long_user.margin_positions[pos_idx].quantity;
+                
+                if short_qty == quantity {
+                    // Exact match - remove position completely
+                    println!("DEBUG: Removing fully netted position");
+                    long_user.margin_positions.retain(|p| 
+                        !(p.asset == base_asset && p.position_type == OrderType::MarginShort)
+                    );
+                    
+                    // Return margin
+                    if let Some(usdc_balance) = long_user.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                        usdc_balance.balance += short_margin;
+                        usdc_balance.locked_balance -= short_margin;
+                    }
+                } else if short_qty > quantity {
+                    // Reduce short position
+                    println!("DEBUG: Reducing short position");
+                    long_user.margin_positions[pos_idx].quantity -= quantity;
+                    
+                    // Return partial margin
+                    if let Some(usdc_balance) = long_user.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                        let returned_margin = short_margin * (quantity / short_qty);
+                        usdc_balance.balance += returned_margin;
+                        usdc_balance.locked_balance -= returned_margin;
+                    }
+                } else {
+                    // Remove short position and create smaller long position
+                    println!("DEBUG: Converting to long position");
+                    let short_qty = short_qty;  // Clone the quantity first
+                    long_user.margin_positions.retain(|p| 
+                        !(p.asset == base_asset && p.position_type == OrderType::MarginShort)
+                    );
+                    let new_quantity = quantity - short_qty;  // Use cloned quantity
+                    
+                    let mut new_position = MarginPosition {
+                        asset: base_asset.to_string(),
+                        quantity: new_quantity,
+                        avg_price: price,
+                        position_type: OrderType::MarginLong,
+                        unrealized_pnl: None,
+                        liquidation_price: None,
+                    };
+                    new_position.calculate_liquidation_price(leverage);
+                    long_user.margin_positions.push(new_position);
+                    
+                    // Return margin and lock new amount
+                    if let Some(usdc_balance) = long_user.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                        usdc_balance.balance += short_margin;
+                        usdc_balance.locked_balance = long_margin * (new_quantity / quantity);
+                    }
+                }
             } else {
-                let mut new_position = MarginPosition {
-                    asset: base_asset.to_string(),
-                    quantity,
-                    avg_price: price,
-                    position_type: OrderType::MarginLong,
-                    unrealized_pnl: None,
-                    liquidation_price: None,
-                };
-                new_position.calculate_liquidation_price(leverage);
-                long_user.margin_positions.push(new_position);
-            }
-        }
-
-        if let Some(short_user) = users_guard.iter_mut().find(|u| u.id == short_user_id) {
-            if let Some(usdc_balance) = short_user.balances.iter_mut().find(|b| b.ticker == "USDC")
-            {
-                println!(
-                    "DEBUG: Short user initial - Balance: {}, Locked: {}",
-                    usdc_balance.balance, usdc_balance.locked_balance
-                );
-
-                usdc_balance.balance = usdc_balance.balance - short_margin;
-                usdc_balance.locked_balance = short_margin;
-
-                println!(
-                    "DEBUG: Short user after margin - Balance: {}, Locked: {}",
-                    usdc_balance.balance, usdc_balance.locked_balance
-                );
-            }
-
-            if let Some(position) = short_user
-                .margin_positions
-                .iter_mut()
-                .find(|p| p.asset == base_asset && p.position_type == OrderType::MarginShort)
-            {
-                position.quantity = position.quantity.checked_sub(quantity).unwrap();
-                if position.quantity.is_zero() {
-                    short_user
-                        .margin_positions
-                        .retain(|p| !p.quantity.is_zero());
+                // Create or update long position
+                println!("DEBUG: Creating/updating long position");
+                if let Some(pos) = long_user
+                    .margin_positions
+                    .iter_mut()
+                    .find(|p| p.asset == base_asset && p.position_type == OrderType::MarginLong)
+                {
+                    let old_quantity = pos.quantity;
+                    pos.quantity += quantity;
+                    pos.avg_price = ((pos.avg_price * old_quantity) + (price * quantity)) / pos.quantity;
+                    pos.calculate_liquidation_price(leverage);
+                } else {
+                    let mut new_position = MarginPosition {
+                        asset: base_asset.to_string(),
+                        quantity,
+                        avg_price: price,
+                        position_type: OrderType::MarginLong,
+                        unrealized_pnl: None,
+                        liquidation_price: None,
+                    };
+                    new_position.calculate_liquidation_price(leverage);
+                    long_user.margin_positions.push(new_position);
+                }
+                
+                // Lock margin
+                if let Some(usdc_balance) = long_user.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                    usdc_balance.balance -= long_margin;
+                    usdc_balance.locked_balance += long_margin;
                 }
             }
         }
+
+        // Similar logic for short user
+        if let Some(short_user) = users_guard.iter_mut().find(|u| u.id == short_user_id) {
+            println!("DEBUG: Processing short user {}", short_user_id);
+            // Check for existing long position first
+            if let Some(pos_idx) = short_user
+                .margin_positions
+                .iter()
+                .position(|p| p.asset == base_asset && p.position_type == OrderType::MarginLong)
+            {
+                let long_pos = &mut short_user.margin_positions[pos_idx];
+                
+                // Net the positions
+                if long_pos.quantity == quantity {
+                    let long_qty = long_pos.quantity;  // Clone the quantity first
+                    short_user.margin_positions.remove(pos_idx);
+                    let new_quantity = quantity - long_qty;  // Use cloned quantity
+                    
+                    let mut new_position = MarginPosition {
+                        asset: base_asset.to_string(),
+                        quantity: new_quantity,
+                        avg_price: price,
+                        position_type: OrderType::MarginShort,
+                        unrealized_pnl: None,
+                        liquidation_price: None,
+                    };
+                    new_position.calculate_liquidation_price(leverage);
+                    short_user.margin_positions.push(new_position);
+                    
+                    if let Some(usdc_balance) = short_user.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                        usdc_balance.balance += long_margin;
+                        usdc_balance.locked_balance = short_margin * (new_quantity / quantity);
+                    }
+                } else if long_pos.quantity > quantity {
+                    long_pos.quantity -= quantity;
+                    if let Some(usdc_balance) = short_user.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                        let returned_margin = long_margin * (quantity / long_pos.quantity);
+                        usdc_balance.balance += returned_margin;
+                        usdc_balance.locked_balance -= returned_margin;
+                    }
+                } else {
+                    let long_qty = long_pos.quantity;  // Clone the quantity first
+                    short_user.margin_positions.remove(pos_idx);
+                    let new_quantity = quantity - long_qty;  // Use cloned quantity
+                    
+                    let mut new_position = MarginPosition {
+                        asset: base_asset.to_string(),
+                        quantity: new_quantity,
+                        avg_price: price,
+                        position_type: OrderType::MarginShort,
+                        unrealized_pnl: None,
+                        liquidation_price: None,
+                    };
+                    new_position.calculate_liquidation_price(leverage);
+                    short_user.margin_positions.push(new_position);
+                    
+                    if let Some(usdc_balance) = short_user.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                        usdc_balance.balance += long_margin;
+                        usdc_balance.locked_balance = short_margin * (new_quantity / quantity);
+                    }
+                }
+            } else {
+                // Create or update short position
+                if let Some(pos) = short_user
+                    .margin_positions
+                    .iter_mut()
+                    .find(|p| p.asset == base_asset && p.position_type == OrderType::MarginShort)
+                {
+                    let old_quantity = pos.quantity;
+                    pos.quantity += quantity;
+                    pos.avg_price = ((pos.avg_price * old_quantity) + (price * quantity)) / pos.quantity;
+                    pos.calculate_liquidation_price(leverage);
+                } else {
+                    let mut new_position = MarginPosition {
+                        asset: base_asset.to_string(),
+                        quantity,
+                        avg_price: price,
+                        position_type: OrderType::MarginShort,
+                        unrealized_pnl: None,
+                        liquidation_price: None,
+                    };
+                    new_position.calculate_liquidation_price(leverage);
+                    short_user.margin_positions.push(new_position);
+                }
+                
+                // Lock margin
+                if let Some(usdc_balance) = short_user.balances.iter_mut().find(|b| b.ticker == "USDC") {
+                    usdc_balance.balance -= short_margin;
+                    usdc_balance.locked_balance += short_margin;
+                }
+            }
+        }
+        
+        println!("DEBUG: Position update complete");
     }
 
     pub fn get_quote_detail(&self, quantity: Decimal, order_type: OrderType) -> GetQuoteResponse {
@@ -298,5 +439,5 @@ impl MarginOrderbook {
             index_price: None,
             timestamp: now,
         })
-    }
+    }  
 }

@@ -6,8 +6,7 @@ use serde_json::{json, Value};
 
 use crate::{
     models::{
-        CancelOrderPayload, CreateOrderPayload, GetMarginPositionsPayload, GetOpenOrdersPayload,
-        GetQuoteRequest, MessageToEngine,
+        CancelOrderPayload, CreateOrderPayload, GetMarginPositionsPayload, GetOpenOrdersPayload, GetQuoteRequest, MessageToEngine
     },
     state::AppState,
 };

@@ -73,3 +73,10 @@ pub struct GetUserBalancesPayload {
 pub struct GetMarginPositionsPayload {
     pub user_id: String,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClosePositionPayload {
+    pub user_id: String,
+    pub market: String,
+    pub position_type: OrderType,
+}

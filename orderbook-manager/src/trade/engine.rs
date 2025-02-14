@@ -10,10 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     models::{
-        Balance, CancelOrderPayload, CreateOrderPayload, MarginOrder, MarginPosition,
-        MarginPositionsPayload, MessageFromApi, MessageToApi, OpenOrdersPayload,
-        OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType, SpotOrder, User,
-        UserBalancesPayload,
+        Balance, CancelOrderPayload, CreateOrderPayload, MarginOrder, MarginPosition, MarginPositionsPayload, MessageFromApi, MessageToApi, OpenOrdersPayload, OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType, SpotOrder, User, UserBalancesPayload
     },
     services::{     
         pnl_service::PnlMonitor,
