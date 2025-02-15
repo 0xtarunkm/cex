@@ -32,34 +32,14 @@ The project consists of three main components:
    - Transaction history
    - Onramp and offramp support
 
-## Features
-
-- **Trading Capabilities**:
-  - Spot trading with limit orders
-  - Margin trading with up to 10x leverage
-  - Real-time order matching
-  - Position tracking and PnL monitoring
-
-- **Market Data**:
-  - Real-time orderbook depth
-  - Trade execution broadcasts
-  - Price updates (mark, index, last)
-  - WebSocket streaming
-
-- **Risk Management**:
-  - Margin requirement validation
-  - Position monitoring
-  - Liquidation price calculation
-  - Balance checks
-
-## API Access
-[Postman Collection](https://www.postman.com/solar-trinity-740656/cex/overview)
-
 ## Setup
 
 ```bash
 docker compose up --build -d
 ```
+
+## API Access
+[Postman Collection](https://www.postman.com/solar-trinity-740656/cex/overview)
 
 ---
 Built with 🦀 and ❤️
