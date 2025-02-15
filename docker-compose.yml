@@ -29,11 +29,6 @@ services:
     restart: on-failure
     networks:
       - app_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "200m"
-        max-file: "10"
 
   websocket_server:
     build:
@@ -55,11 +50,6 @@ services:
     restart: on-failure
     networks:
       - app_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "200m"
-        max-file: "10"
 
   http_server:
     build:
@@ -86,11 +76,6 @@ services:
     restart: on-failure
     networks:
       - app_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "200m"
-        max-file: "10"
 
   postgres:
     image: postgres:17.2-alpine3.21

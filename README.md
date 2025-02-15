@@ -60,42 +60,6 @@ The project consists of three main components:
 ```bash
 docker compose up --build -d
 ```
-yes that's it!
-
-## Trading Flows
-
-### Spot Trading
-1. Balance validation
-2. Order matching
-3. Real-time execution
-4. Balance updates
-5. WebSocket notifications
-
-### Margin Trading
-1. Margin requirement checks
-2. Position creation/update
-3. PnL monitoring
-4. Liquidation price tracking
-5. Real-time position updates
-
-# Implementation Details
-
-### Data Structures
-- Priority queue-based orderbooks
-- Position tracking system
-- Real-time price service
-- WebSocket subscription management
-
-### Communication
-- Redis for inter-service messaging
-- WebSocket for real-time updates
-- REST API for order management
-
-### Monitoring
-- Continuous PnL calculation
-- Position risk assessment
-- Balance tracking
-- Market data broadcasting
 
 ---
 Built with 🦀 and ❤️
