@@ -1,5 +1,5 @@
 use anyhow::Result;
-use models::{message_from_engine::MessageFromEngine, IncomingMessage};
+use models::{message_from_engine::{MessageFromEngine, Ticker}, IncomingMessage};
 use redis::Commands;
 use services::redis_manager::RedisManager;
 use dotenv::dotenv;
@@ -33,12 +33,32 @@ async fn main() -> Result<()> {
                     MessageFromEngine::CreateOrder { data } => {
                         info!("Adding trade data: price={}, time={}", data.price, data.time);
 
-                        sqlx::query!(
-                            "INSERT INTO sol_prices (time, price, currency_code) VALUES ($1, $2, $3)", 
-                            OffsetDateTime::from_unix_timestamp(data.time.timestamp()).unwrap(),
-                            data.price.to_f64().unwrap(),
-                            "SOL"
-                        ).execute(&pool).await?;
+                        match data.ticker {
+                            Ticker::SOL_USDC => {
+                                sqlx::query!(
+                                    "INSERT INTO sol_prices (time, price, currency_code) VALUES ($1, $2, $3)", 
+                                    OffsetDateTime::from_unix_timestamp(data.time.timestamp()).unwrap(),
+                                    data.price.to_f64().unwrap(),
+                                    "SOL"
+                                ).execute(&pool).await?;
+                            }
+                            Ticker::BTC_USDC => {
+                                sqlx::query!(
+                                    "INSERT INTO btc_prices (time, price, currency_code) VALUES ($1, $2, $3)", 
+                                    OffsetDateTime::from_unix_timestamp(data.time.timestamp()).unwrap(),
+                                    data.price.to_f64().unwrap(),
+                                    "BTC"
+                                ).execute(&pool).await?;
+                            }
+                            Ticker::ETH_USDC => {
+                                sqlx::query!(
+                                    "INSERT INTO eth_prices (time, price, currency_code) VALUES ($1, $2, $3)", 
+                                    OffsetDateTime::from_unix_timestamp(data.time.timestamp()).unwrap(),
+                                    data.price.to_f64().unwrap(),
+                                    "ETH"
+                                ).execute(&pool).await?;
+                            }
+                        }
                     }
                 }
             }

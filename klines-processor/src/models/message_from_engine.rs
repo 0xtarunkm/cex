@@ -11,6 +11,15 @@ pub enum MessageFromEngine {
 
 #[derive(Debug, Deserialize)]
 pub struct AddTradePayload {
+    pub ticker: Ticker,
     pub time: DateTime<Utc>,
     pub price: Decimal
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_camel_case_types)]
+pub enum Ticker {
+    SOL_USDC,
+    ETH_USDC,
+    BTC_USDC,
 }
