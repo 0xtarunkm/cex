@@ -1,12 +1,15 @@
 use anyhow::Result;
-use models::{message_from_engine::{MessageFromEngine, Ticker}, IncomingMessage};
-use redis::Commands;
-use services::redis_manager::RedisManager;
 use dotenv::dotenv;
+use models::{
+    message_from_engine::{MessageFromEngine, Ticker},
+    IncomingMessage,
+};
+use redis::Commands;
+use rust_decimal::prelude::*;
+use services::redis_manager::RedisManager;
 use sqlx::PgPool;
 use time::OffsetDateTime;
 use tracing::info;
-use rust_decimal::prelude::*;
 
 mod models;
 mod services;
@@ -31,7 +34,10 @@ async fn main() -> Result<()> {
 
                 match parsed_message.message {
                     MessageFromEngine::CreateOrder { data } => {
-                        info!("Adding trade data: price={}, time={}", data.price, data.time);
+                        info!(
+                            "Adding trade data: price={}, time={}",
+                            data.price, data.time
+                        );
 
                         match data.ticker {
                             Ticker::SOL_USDC => {

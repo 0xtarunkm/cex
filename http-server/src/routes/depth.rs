@@ -1,20 +1,23 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Query, State},
     Json,
 };
 use serde_json::{json, Value};
 
 use crate::{
-    models::{GetDepthPayload, MessageToEngine, OrderType},
+    models::{GetDepthPayload, GetDepthQuery, MessageToEngine},
     state::AppState,
 };
 
 pub async fn get_depth(
     State(state): State<AppState>,
-    Path((market, order_type)): Path<(String, OrderType)>,
+    Query(params): Query<GetDepthQuery>,
 ) -> Json<Value> {
     let message = MessageToEngine::GetDepth {
-        data: GetDepthPayload { market, order_type },
+        data: GetDepthPayload {
+            market: params.market,
+            order_type: params.order_type,
+        },
     };
 
     match state.redis_manager.send_and_wait(message) {

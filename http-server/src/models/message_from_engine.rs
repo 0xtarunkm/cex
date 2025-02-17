@@ -1,4 +1,4 @@
-use super::{OrderSide, OrderType};
+use super::OrderSide;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -32,23 +32,31 @@ pub struct MarginPositionsPayload {
     pub positions: Vec<MarginPosition>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum PositionType {
+    Long,
+    Short,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MarginPosition {
     pub asset: String,
-    pub quantity: Decimal,
-    pub avg_price: Decimal,
-    pub position_type: OrderType,
-    pub unrealized_pnl: Option<Decimal>,
-    pub liquidation_price: Option<Decimal>,
+    pub user_id: String,
+    pub position_type: PositionType,
+    pub entry_price: Decimal,
+    pub size: Decimal,
+    pub leverage: Decimal,
+    pub collateral: Decimal,
+    pub unrealized_pnl: Decimal,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpenOrdersPayload {
-    pub open_orders: Vec<SpotOrder>,
+    pub open_orders: Vec<Order>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SpotOrder {
+pub struct Order {
     pub id: String,
     pub user_id: String,
     pub price: Decimal,

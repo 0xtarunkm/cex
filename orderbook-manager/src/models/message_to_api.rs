@@ -1,6 +1,6 @@
 use crate::services::price_service::PriceInfo;
 
-use super::{Depth, GetQuoteResponse, MarginPositionsPayload, SpotOrder, UserBalancesPayload};
+use super::{Depth, GetQuoteResponse, MarginPositionsPayload, Order, UserBalancesPayload};
 use rust_decimal::Decimal;
 use serde::Serialize;
 
@@ -42,5 +42,5 @@ pub struct OrderCancelledPayload {
 
 #[derive(Debug, Serialize)]
 pub struct OpenOrdersPayload {
-    pub open_orders: Vec<SpotOrder>,
+    pub open_orders: Vec<Order>,
 }

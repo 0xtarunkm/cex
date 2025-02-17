@@ -15,7 +15,7 @@ pub struct User {
 }
 
 impl User {
-    pub fn new(id: String) -> Self {
+    pub fn _new(id: String) -> Self {
         User {
             id,
             balances: Vec::new(),

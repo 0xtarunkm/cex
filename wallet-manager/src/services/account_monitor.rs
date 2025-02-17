@@ -1,6 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
+use crate::db::{db_connection, db_queries};
 use anyhow::Result;
+use bigdecimal::BigDecimal;
 use futures::{SinkExt, StreamExt};
 use solana_sdk::pubkey::Pubkey;
 use tokio::sync::Mutex;
@@ -12,8 +14,6 @@ use yellowstone_grpc_proto::geyser::{
     geyser_client::GeyserClient, subscribe_update::UpdateOneof, SubscribeRequest,
     SubscribeRequestPing,
 };
-use crate::db::{db_queries, db_connection};
-use bigdecimal::BigDecimal;
 
 pub struct GrpcStreamManager {
     client: GeyserGrpcClient<InterceptorXToken>,
@@ -30,15 +30,15 @@ impl GrpcStreamManager {
         account_info: &yellowstone_grpc_proto::geyser::SubscribeUpdateAccountInfo,
     ) -> Result<()> {
         let pool = db_connection::get_connection_pool().await?;
-        
+
         let pubkey = Pubkey::try_from(account_info.pubkey.clone())
             .expect("valid pubkey")
             .to_string();
-        
+
         let lamports = BigDecimal::from(account_info.lamports);
-        
+
         db_queries::update_solana_balance(&pool, &pubkey, lamports).await?;
-        
+
         info!(
         "ACCOUNT UPDATE RECEIVED:\nSlot: {}\nPubkey: {}\nLamports: {}\nOwner: {}\nData length: {}\nExecutable: {}\nWrite version: {}\n",
             slot,
@@ -103,7 +103,8 @@ impl GrpcStreamManager {
                     match msg.update_oneof {
                         Some(UpdateOneof::Account(account)) => {
                             if let Some(account_info) = account.account {
-                                self.handle_account_update(account.slot, &account_info).await?;
+                                self.handle_account_update(account.slot, &account_info)
+                                    .await?;
                             }
                         }
                         Some(UpdateOneof::Ping(_)) => {

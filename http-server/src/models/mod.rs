@@ -25,3 +25,31 @@ pub struct OnRampPayload {
     pub network: String,
     pub token: String,
 }
+
+#[derive(Deserialize)]
+pub struct OpenOrdersQuery {
+    pub user_id: String,
+    pub market: String,
+}
+
+#[derive(Deserialize)]
+pub struct GetMarginPositionsQuery {
+    pub user_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct GetUserBalancesQuery {
+    pub user_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct GetDepthQuery {
+    pub market: String,
+    pub order_type: OrderType,
+}
+
+#[derive(Deserialize)]
+pub struct GetTickerQuery {
+    pub market: String,
+    pub order_type: OrderType,
+}

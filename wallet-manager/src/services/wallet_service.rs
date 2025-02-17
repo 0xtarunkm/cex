@@ -9,7 +9,9 @@ pub struct WalletService {
 
 impl WalletService {
     pub fn new() -> Self {
-        Self { solana_wallet_count: 0 }
+        Self {
+            solana_wallet_count: 0,
+        }
     }
 
     pub fn generate_wallet(&mut self) -> Result<(String, String)> {
@@ -26,10 +28,10 @@ impl WalletService {
         let mut secret_key = [0u8; 64];
 
         sodalite::sign_keypair_seed(&mut public_key, &mut secret_key, &seed_bytes);
-        
+
         Ok((
             bs58::encode(&public_key).into_string(),
-            bs58::encode(&secret_key).into_string()
+            bs58::encode(&secret_key).into_string(),
         ))
     }
 }

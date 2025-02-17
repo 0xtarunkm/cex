@@ -7,7 +7,6 @@ mod user;
 pub use incoming_message::*;
 pub use message_from_api::*;
 pub use message_to_api::*;
-pub use order::*;
 pub use user::*;
 
 use rust_decimal::Decimal;
@@ -34,45 +33,34 @@ pub struct Balance {
     pub locked_balance: Decimal,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PositionType {
+    Long,
+    Short,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MarginPosition {
     pub asset: String,
-    pub quantity: Decimal,
-    pub avg_price: Decimal,
-    pub position_type: OrderType,
-    pub unrealized_pnl: Option<Decimal>,
-    pub liquidation_price: Option<Decimal>,
-}
-
-impl MarginPosition {
-    pub fn calculate_unrealized_pnl(&mut self, current_price: Decimal) {
-        self.unrealized_pnl = Some(match self.position_type {
-            OrderType::MarginLong => (current_price - self.avg_price) * self.quantity,
-            OrderType::MarginShort => (self.avg_price - current_price) * self.quantity,
-            _ => Decimal::ZERO,
-        });
-    }
-
-    pub fn calculate_liquidation_price(&mut self, leverage: Decimal) {
-        self.liquidation_price = Some(match self.position_type {
-            OrderType::MarginLong => {
-                self.avg_price - (self.avg_price / leverage)
-            }
-            OrderType::MarginShort => {
-                self.avg_price + (self.avg_price / leverage)
-            }
-            _ => Decimal::ZERO,
-        });
-    }
+    pub user_id: String,
+    pub position_type: PositionType,
+    pub entry_price: Decimal,
+    pub size: Decimal,
+    pub leverage: Decimal,
+    pub collateral: Decimal,
+    pub unrealized_pnl: Decimal,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpotOrder {
+pub struct Order {
     pub id: String,
     pub user_id: String,
     pub price: Decimal,
     pub quantity: Decimal,
     pub side: OrderSide,
+    pub is_margin: bool,
+    pub leverage: Option<Decimal>,
     pub timestamp: i64,
 }
 

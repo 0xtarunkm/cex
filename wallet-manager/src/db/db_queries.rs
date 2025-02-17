@@ -5,7 +5,7 @@ use sqlx::PgPool;
 pub async fn update_solana_balance(
     pool: &PgPool,
     public_key: &str,
-    lamports: BigDecimal
+    lamports: BigDecimal,
 ) -> Result<()> {
     sqlx::query!(
         r#"

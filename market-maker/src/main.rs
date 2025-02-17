@@ -17,7 +17,10 @@ async fn order_loop() -> Result<()> {
         let price = Decimal::from_f64(10.0 + rng.random::<f64>() * 10.0).unwrap();
 
         let response: MessageFromEngine = client
-            .get(format!("{}/api/v1/order/open?user_id={}&market={}", BASE_URL, USER_ID, MARKET))
+            .get(format!(
+                "{}/api/v1/order/open?user_id={}&market={}",
+                BASE_URL, USER_ID, MARKET
+            ))
             .send()
             .await?
             .json()
@@ -28,8 +31,14 @@ async fn order_loop() -> Result<()> {
             _ => Vec::new(),
         };
 
-        let total_bids = open_orders.iter().filter(|o| o.side == OrderSide::Buy).count() as i32;
-        let total_asks = open_orders.iter().filter(|o| o.side == OrderSide::Sell).count() as i32;
+        let total_bids = open_orders
+            .iter()
+            .filter(|o| o.side == OrderSide::Buy)
+            .count() as i32;
+        let total_asks = open_orders
+            .iter()
+            .filter(|o| o.side == OrderSide::Sell)
+            .count() as i32;
 
         // cancel existing orders
         let cancelled_bids = cancel_bids_more_than(&client, &open_orders, price).await?;
@@ -50,7 +59,7 @@ async fn order_loop() -> Result<()> {
                         side: OrderSide::Buy,
                         user_id: USER_ID.to_string(),
                         leverage: None,
-                        order_type: OrderType::Spot
+                        order_type: OrderType::Spot,
                     })
                     .send()
                     .await?;
@@ -68,7 +77,7 @@ async fn order_loop() -> Result<()> {
                         side: OrderSide::Sell,
                         user_id: USER_ID.to_string(),
                         leverage: None,
-                        order_type: OrderType::Spot
+                        order_type: OrderType::Spot,
                     })
                     .send()
                     .await?;
@@ -79,7 +88,11 @@ async fn order_loop() -> Result<()> {
     }
 }
 
-async fn cancel_bids_more_than(client: &Client, open_orders: &[SpotOrder], price: Decimal) -> Result<i32> {
+async fn cancel_bids_more_than(
+    client: &Client,
+    open_orders: &[SpotOrder],
+    price: Decimal,
+) -> Result<i32> {
     let mut cancelled = 0;
     let mut rng = rand::rng();
 
@@ -87,7 +100,8 @@ async fn cancel_bids_more_than(client: &Client, open_orders: &[SpotOrder], price
         if order.side == OrderSide::Buy {
             let order_price: Decimal = order.price;
             if order_price < price || rng.random::<f64>() < 0.5 {
-                client.delete(format!("{}/api/v1/order/cancel", BASE_URL))
+                client
+                    .delete(format!("{}/api/v1/order/cancel", BASE_URL))
                     .json(&serde_json::json!({
                         "order_id": order.id,
                         "user_id": "3",
@@ -102,7 +116,11 @@ async fn cancel_bids_more_than(client: &Client, open_orders: &[SpotOrder], price
     Ok(cancelled)
 }
 
-async fn cancel_asks_less_than(client: &Client, open_orders: &[SpotOrder], price: Decimal) -> Result<i32> {
+async fn cancel_asks_less_than(
+    client: &Client,
+    open_orders: &[SpotOrder],
+    price: Decimal,
+) -> Result<i32> {
     let mut cancelled = 0;
     let mut rng = rand::rng();
 

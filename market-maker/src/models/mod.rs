@@ -4,11 +4,17 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum MessageFromEngine {
-    OrderPlaced { payload: OrderPlacedPayload },
+    OrderPlaced {
+        payload: OrderPlacedPayload,
+    },
     #[serde(rename = "ORDER_CANCELLED")]
-    OrderCancelled { payload: OrderCancelledPayload },
+    OrderCancelled {
+        payload: OrderCancelledPayload,
+    },
     #[serde(rename = "OPEN_ORDERS")]
-    OpenOrders { payload: OpenOrdersPayload },
+    OpenOrders {
+        payload: OpenOrdersPayload,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

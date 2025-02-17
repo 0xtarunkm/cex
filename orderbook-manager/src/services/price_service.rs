@@ -1,12 +1,7 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
-
-use chrono::Utc;
 use rust_decimal::Decimal;
 use serde::Serialize;
-use tokio::sync::Mutex;
-use tracing::info;
-
-use crate::trade::{MarginOrderbook, SpotOrderbook};
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::RwLock;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
@@ -19,82 +14,24 @@ pub struct PriceInfo {
 
 #[allow(dead_code)]
 pub struct PriceService {
-    prices: Arc<Mutex<HashMap<String, PriceInfo>>>,
-    spot_orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<SpotOrderbook>>>>>,
-    margin_orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<MarginOrderbook>>>>>,
+    prices: Arc<RwLock<HashMap<String, PriceInfo>>>,
 }
 
 impl PriceService {
-    pub fn new(
-        spot_orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<SpotOrderbook>>>>>,
-        margin_orderbooks: Arc<Mutex<HashMap<String, Arc<Mutex<MarginOrderbook>>>>>,
-    ) -> Self {
+    pub fn new() -> Self {
         PriceService {
-            prices: Arc::new(Mutex::new(HashMap::new())),
-            spot_orderbooks,
-            margin_orderbooks,
+            prices: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    pub async fn update_trade_price(&self, market: &str, price: Decimal) {
-        info!(?market, ?price, "Updating trade price");
-        let mut prices = self.prices.lock().await;
-        let now = Utc::now().timestamp();
-
-        prices.insert(
-            market.to_string(),
-            PriceInfo {
-                last_trade_price: Some(price),
-                mark_price: price,
-                index_price: None,
-                timestamp: now,
-            },
-        );
-    }
-
-    async fn calculate_mid_price(&self, market: &str) -> Option<Decimal> {
-        let spot_orderbooks = self.spot_orderbooks.lock().await;
-        if let Some(orderbook) = spot_orderbooks.get(market) {
-            let ob = orderbook.lock().await;
-            if !ob.bids.is_empty() && !ob.asks.is_empty() {
-                let best_bid = ob.bids[0].price;
-                let best_ask = ob.asks[0].price;
-                return Some((best_bid + best_ask) / Decimal::from(2));
-            }
-        }
-        None
-    }
-
-    pub async fn start_price_updates(&self) {
-        let mut interval = tokio::time::interval(Duration::from_secs(1));
-
-        loop {
-            interval.tick().await;
-            self.update_all_prices().await;
-        }
-    }
-
-    async fn update_all_prices(&self) {
-        let markets = vec!["SOL_USDC", "BTC_USDC", "ETH_USDC"];
-
-        for market in markets {
-            if let Some(mid_price) = self.calculate_mid_price(market).await {
-                info!(?market, ?mid_price, "Calculated new mid price");
-                self.update_trade_price(market, mid_price).await;
-            } else {
-                // error!(?market, "orderbook is empty");
-            }
-        }
+    pub async fn update_price(&self, market: &str, price_info: PriceInfo) {
+        let mut prices = self.prices.write().await;
+        // info!(?market, ?price_info, "Updating price");
+        prices.insert(market.to_string(), price_info);
     }
 
     pub async fn get_price(&self, market: &str) -> Option<Decimal> {
-        let prices = self.prices.lock().await;
+        let prices = self.prices.read().await;
         prices.get(market).map(|info| info.mark_price)
-    }
-
-    #[allow(dead_code)]
-    pub async fn get_price_info(&self, market: &str) -> Option<PriceInfo> {
-        let prices = self.prices.lock().await;
-        prices.get(market).cloned()
     }
 }

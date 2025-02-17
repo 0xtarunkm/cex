@@ -20,10 +20,7 @@ pub enum MessageFromApi {
     #[serde(rename = "GET_MARGIN_POSITIONS")]
     GetMarginPositions { data: GetMarginPositionsPayload },
     #[serde(rename = "GET_TICKER")]
-    GetTicker {
-        market: String,
-        order_type: OrderType,
-    },
+    GetTicker { market: String },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,6 +31,7 @@ pub struct CreateOrderPayload {
     pub quantity: Decimal,
     pub side: OrderSide,
     pub order_type: OrderType,
+    pub is_margin: bool,
     pub leverage: Option<Decimal>,
 }
 

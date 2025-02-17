@@ -13,7 +13,7 @@ pub enum MessageFromEngine {
 pub struct AddTradePayload {
     pub ticker: Ticker,
     pub time: DateTime<Utc>,
-    pub price: Decimal
+    pub price: Decimal,
 }
 
 #[derive(Debug, Deserialize)]

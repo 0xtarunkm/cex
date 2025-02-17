@@ -1,101 +1,116 @@
 use std::{sync::Arc, time::Duration};
 
 use rust_decimal::Decimal;
-use tokio::{sync::Mutex, time};
+use tokio::sync::RwLock;
 use tracing::{error, info};
 
-use crate::models::{MarginPosition, OrderType, User};
+use crate::models::{MarginPosition, PositionType, User};
 
 use super::price_service::PriceService;
 
-pub struct PnlMonitor {
-    users: Arc<Mutex<Vec<User>>>,
+pub struct PnlService {
+    users: Arc<RwLock<Vec<User>>>,
     price_service: Arc<PriceService>,
 }
 
-impl PnlMonitor {
-    pub fn new(users: Arc<Mutex<Vec<User>>>, price_service: Arc<PriceService>) -> Self {
-        PnlMonitor {
+impl PnlService {
+    pub fn new(users: Arc<RwLock<Vec<User>>>, price_service: Arc<PriceService>) -> Self {
+        PnlService {
             users,
             price_service,
         }
     }
 
-    pub async fn start_monitoring(&self) {
-        info!("Starting PNL monitoring");
-        let mut interval = time::interval(Duration::from_secs(1));
+    pub fn start_monitoring(&self) {
+        let users = self.users.clone();
+        let price_service = self.price_service.clone();
 
-        loop {
-            interval.tick().await;
-            if let Err(e) = self.update_all_positions().await {
-                error!("Error updating positions: {}", e);
-            }
-        }
+        std::thread::Builder::new()
+            .name("pnl_monitor".to_string())
+            .spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+
+                rt.block_on(async move {
+                    let mut interval = tokio::time::interval(Duration::from_secs(1));
+                    info!("Started PNL monitoring thread");
+
+                    loop {
+                        interval.tick().await;
+                        if let Err(e) = Self::check_positions(&users, &price_service).await {
+                            error!("Error checking positions: {}", e);
+                        }
+                    }
+                });
+            })
+            .expect("Failed to spawn PNL monitoring thread");
     }
 
-    async fn update_all_positions(&self) -> Result<(), String> {
-        let mut users = self.users.lock().await;
+    async fn check_positions(
+        users: &Arc<RwLock<Vec<User>>>,
+        price_service: &Arc<PriceService>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut users = users.write().await;
 
         for user in users.iter_mut() {
-            let mut liquidate = false;
-            let mut position_to_liquidate = None;
-            let mut liquidation_price = None;
+            let mut positions_to_liquidate = Vec::new();
 
-            for position in user.margin_positions.iter_mut() {
+            for position in user.margin_positions.iter() {
                 let market = format!("{}_USDC", position.asset);
-                if let Some(price) = self.price_service.get_price(&market).await {
-                    position.calculate_unrealized_pnl(price);
-
-                    if let Some(liq_price) = position.liquidation_price {
-                        match position.position_type {
-                            OrderType::MarginLong if price <= liq_price => {
-                                liquidate = true;
-                                position_to_liquidate = Some(position.clone());
-                                liquidation_price = Some(price);
-                                break;
-                            }
-                            OrderType::MarginShort if price >= liq_price => {
-                                liquidate = true;
-                                position_to_liquidate = Some(position.clone());
-                                liquidation_price = Some(price);
-                                break;
-                            }
-                            _ => {}
-                        }
+                if let Some(price) = price_service.get_price(&market).await {
+                    let liquidation_threshold = position.collateral * Decimal::new(-80, 2);
+                    if position.unrealized_pnl <= liquidation_threshold {
+                        positions_to_liquidate.push((position.clone(), price));
                     }
                 }
             }
 
-            if liquidate {
-                if let (Some(pos), Some(price)) = (position_to_liquidate, liquidation_price) {
-                    self.liquidate_position(user, &pos, price).await?;
-                }
+            for (position, price) in positions_to_liquidate {
+                Self::liquidate_position(user, &position, price).await?;
             }
         }
         Ok(())
     }
 
     async fn liquidate_position(
-        &self,
         user: &mut User,
         position: &MarginPosition,
         price: Decimal,
-    ) -> Result<(), String> {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         info!(
             user_id = ?user.id,
             asset = ?position.asset,
-            quantity = ?position.quantity,
+            size = ?position.size,
             price = ?price,
             "Liquidating position"
         );
 
         let realized_pnl = match position.position_type {
-            OrderType::MarginLong => (price - position.avg_price) * position.quantity,
-            OrderType::MarginShort => (position.avg_price - price) * position.quantity,
-            _ => return Err("Invalid position type".to_string()),
+            PositionType::Long => (price - position.entry_price) * position.size,
+            PositionType::Short => (position.entry_price - price) * position.size,
         };
 
         user.realized_pnl += realized_pnl;
+
+        if let Some(usdc_balance) = user.balances.iter_mut().find(|b| b.ticker == "USDC") {
+            usdc_balance.balance += realized_pnl + position.collateral;
+            usdc_balance.locked_balance -= position.collateral;
+        }
+
+        if position.position_type == PositionType::Short {
+            if let Some(asset_balance) = user
+                .balances
+                .iter_mut()
+                .find(|b| b.ticker == position.asset)
+            {
+                asset_balance.locked_balance -= position.size;
+            }
+        }
+
+        user.margin_used -= position.collateral;
+
         user.margin_positions
             .retain(|p| p.asset != position.asset || p.position_type != position.position_type);
 

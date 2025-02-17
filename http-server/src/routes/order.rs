@@ -1,12 +1,13 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Query, State},
     Json,
 };
 use serde_json::{json, Value};
 
 use crate::{
     models::{
-        CancelOrderPayload, CreateOrderPayload, GetMarginPositionsPayload, GetOpenOrdersPayload, GetQuoteRequest, MessageToEngine
+        CancelOrderPayload, CreateOrderPayload, GetMarginPositionsPayload, GetMarginPositionsQuery,
+        GetOpenOrdersPayload, GetQuoteRequest, MessageToEngine, OpenOrdersQuery,
     },
     state::AppState,
 };
@@ -55,10 +56,13 @@ pub async fn get_quote(
 
 pub async fn open_orders(
     State(state): State<AppState>,
-    Path((user_id, market)): Path<(String, String)>,
+    Query(params): Query<OpenOrdersQuery>,
 ) -> Json<Value> {
     let message = MessageToEngine::GetOpenOrders {
-        data: GetOpenOrdersPayload { user_id, market },
+        data: GetOpenOrdersPayload {
+            user_id: params.user_id,
+            market: params.market,
+        },
     };
 
     match state.redis_manager.send_and_wait(message) {
@@ -71,10 +75,12 @@ pub async fn open_orders(
 
 pub async fn margin_positions(
     State(state): State<AppState>,
-    Path(user_id): Path<String>,
+    Query(params): Query<GetMarginPositionsQuery>,
 ) -> Json<Value> {
     let message = MessageToEngine::GetMarginPositions {
-        data: GetMarginPositionsPayload { user_id },
+        data: GetMarginPositionsPayload {
+            user_id: params.user_id,
+        },
     };
 
     match state.redis_manager.send_and_wait(message) {

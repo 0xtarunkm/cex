@@ -27,30 +27,22 @@ async fn main() {
                     Router::new()
                         .route("/create", post(routes::create_order))
                         .route("/cancel", delete(routes::cancel_order))
-                        .route("/open/{user_id}/{market}", get(routes::open_orders))
+                        .route("/open", get(routes::open_orders))
                         .route("/quote", post(routes::get_quote))
-                        .route("/margin-positions/{user_id}", get(routes::margin_positions))
+                        .route("/margin-positions", get(routes::margin_positions)),
                 )
                 .nest(
                     "/user",
                     Router::new()
-                        .route("/balances/{user_id}", get(routes::get_balances))
+                        .route("/balances", get(routes::get_balances))
                         .route("/onramp", post(routes::onramp)),
                 )
-                .nest(
-                    "/depth",
-                    Router::new().route("/{market}/{order_type}", get(routes::get_depth)),
-                )
-                .nest(
-                    "/ticker",
-                    Router::new().route("/{market}/{order_type}", get(routes::get_ticker)),
-                ),
+                .route("/depth", get(routes::get_depth))
+                .route("/ticker", get(routes::get_ticker)),
         )
         .with_state(app_state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
 
     info!("Listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap_or_else(|e| {

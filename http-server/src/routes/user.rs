@@ -1,21 +1,23 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Query, State},
     Json,
 };
 use serde_json::{json, Value};
 use tracing::info;
 
 use crate::{
-    models::{GetUserBalancesPayload, MessageToEngine, OnRampPayload},
+    models::{GetUserBalancesPayload, GetUserBalancesQuery, MessageToEngine, OnRampPayload},
     state::AppState,
 };
 
 pub async fn get_balances(
     State(state): State<AppState>,
-    Path(user_id): Path<String>,
+    Query(params): Query<GetUserBalancesQuery>,
 ) -> Json<Value> {
     let message = MessageToEngine::GetUserBalances {
-        data: GetUserBalancesPayload { user_id },
+        data: GetUserBalancesPayload {
+            user_id: params.user_id,
+        },
     };
 
     match state.redis_manager.send_and_wait(message) {

@@ -16,7 +16,7 @@ pub struct MarginOrder {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct SpotOrder {
+pub struct Order {
     pub id: String,
     pub user_id: String,
     pub price: Decimal,

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::{
     models::{
@@ -35,7 +35,7 @@ impl Orderbook {
     pub async fn fill_orders(
         &mut self,
         order: &CreateOrderPayload,
-        users: &mut Arc<Mutex<Vec<User>>>,
+        users: &mut Arc<RwLock<Vec<User>>>,
         base_asset: &str,
         quote_asset: &str,
     ) -> Decimal {
@@ -330,7 +330,6 @@ impl Orderbook {
     pub fn get_depth(&self) -> Depth {
         let mut depth: HashMap<Decimal, OrderDetails> = HashMap::new();
 
-        // Process bids
         for bid in &self.bids {
             depth
                 .entry(bid.price)
@@ -343,7 +342,6 @@ impl Orderbook {
                 });
         }
 
-        // Process asks
         for ask in &self.asks {
             depth
                 .entry(ask.price)
@@ -415,11 +413,11 @@ impl Orderbook {
         seller_id: &str,
         price: Decimal,
         quantity: Decimal,
-        users: &mut Arc<Mutex<Vec<User>>>,
+        users: &mut Arc<RwLock<Vec<User>>>,
         base_asset: &str,
         quote_asset: &str,
     ) {
-        let mut users_guard = users.lock().await;
+        let mut users_guard = users.write().await;
         let trade_value = price * quantity;
 
         if let Some(seller) = users_guard.iter_mut().find(|u| u.id == seller_id) {
@@ -490,11 +488,11 @@ impl Orderbook {
 
     async fn net_position(
         &self,
-        users: &mut Arc<Mutex<Vec<User>>>,
+        users: &mut Arc<RwLock<Vec<User>>>,
         user_id: &str,
         new_position: MarginPosition,
     ) -> Result<(), &'static str> {
-        let mut user_guard = users.lock().await;
+        let mut user_guard = users.write().await;
         match user_guard.iter_mut().find(|u| u.id == user_id) {
             Some(user) => {
                 match user.margin_positions.iter_mut().find(|p| {
