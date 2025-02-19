@@ -6,6 +6,7 @@ use models::{CreateOrderPayload, MessageFromEngine, OrderSide, OrderType, SpotOr
 use rand::Rng;
 use reqwest::Client;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
+use tracing::info;
 
 mod constants;
 mod models;
@@ -16,6 +17,8 @@ async fn order_loop() -> Result<()> {
         let mut rng = rand::rng();
         let price = Decimal::from_f64(10.0 + rng.random::<f64>() * 10.0).unwrap();
 
+        info!("Price: {}", price);
+
         let response: MessageFromEngine = client
             .get(format!(
                 "{}/api/v1/order/open?user_id={}&market={}",
@@ -25,6 +28,8 @@ async fn order_loop() -> Result<()> {
             .await?
             .json()
             .await?;
+
+        info!("Response: {:?}", response);
 
         let open_orders = match response {
             MessageFromEngine::OpenOrders { payload } => payload.open_orders,
@@ -50,7 +55,7 @@ async fn order_loop() -> Result<()> {
         while bids_to_add > 0 || asks_to_add > 0 {
             if bids_to_add > 0 {
                 let bid_price = price - Decimal::from_f64(rng.random::<f64>() * 1.0).unwrap();
-                client
+                let response = client
                     .post(format!("{}/api/v1/order/create", BASE_URL))
                     .json(&CreateOrderPayload {
                         market: MARKET.to_string(),
@@ -59,10 +64,13 @@ async fn order_loop() -> Result<()> {
                         side: OrderSide::Buy,
                         user_id: USER_ID.to_string(),
                         leverage: None,
+                        is_margin: false,
                         order_type: OrderType::Spot,
                     })
                     .send()
                     .await?;
+
+                info!("Bid response: {:?}", response);
                 bids_to_add -= 1;
             }
 
@@ -78,6 +86,7 @@ async fn order_loop() -> Result<()> {
                         user_id: USER_ID.to_string(),
                         leverage: None,
                         order_type: OrderType::Spot,
+                        is_margin: false,
                     })
                     .send()
                     .await?;
@@ -104,7 +113,7 @@ async fn cancel_bids_more_than(
                     .delete(format!("{}/api/v1/order/cancel", BASE_URL))
                     .json(&serde_json::json!({
                         "order_id": order.id,
-                        "user_id": "3",
+                        "user_id": "2",
                         "market": MARKET
                     }))
                     .send()
@@ -132,7 +141,7 @@ async fn cancel_asks_less_than(
                     .delete(format!("{}/api/v1/order/cancel", BASE_URL))
                     .json(&serde_json::json!({
                         "order_id": order.id,
-                        "user_id": "3",
+                        "user_id": "2",
                         "market": MARKET
                     }))
                     .send()
@@ -146,5 +155,7 @@ async fn cancel_asks_less_than(
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
+    info!("Market maker started");
     order_loop().await
 }

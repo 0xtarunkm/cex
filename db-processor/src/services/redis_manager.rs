@@ -12,7 +12,7 @@ pub struct RedisManager {
 
 impl RedisManager {
     fn new() -> Self {
-        let client = redis::Client::open("redis://0.0.0.0:6379").unwrap();
+        let client = redis::Client::open(std::env::var("REDIS_URL").unwrap()).unwrap();
         RedisManager { client }
     }
 

@@ -1,4 +1,6 @@
 -- Add up migration script here
+CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+
 CREATE TABLE sol_prices (
     time    TIMESTAMP WITH TIME ZONE NOT NULL,
     price   DOUBLE PRECISION,

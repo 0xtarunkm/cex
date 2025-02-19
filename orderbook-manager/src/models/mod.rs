@@ -1,12 +1,14 @@
 mod incoming_message;
 mod message_from_api;
 mod message_to_api;
+mod message_to_db;
 mod order;
 mod user;
 
 pub use incoming_message::*;
 pub use message_from_api::*;
 pub use message_to_api::*;
+pub use message_to_db::*;
 pub use user::*;
 
 use rust_decimal::Decimal;

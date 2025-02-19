@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use redis::{Client, Commands, Connection, RedisResult};
 use serde_json::Value;
 
-use crate::models::MessageToApi;
+use crate::models::{AddTradePayload, MessageToApi};
 
 lazy_static! {
     static ref REDIS_MANAGER: RedisManager = RedisManager::new();
@@ -36,5 +36,10 @@ impl RedisManager {
     pub fn publish_message(&self, channel: &str, message: &Value) -> RedisResult<()> {
         let mut conn = self.get_connection()?;
         conn.publish(channel, message.to_string())
+    }
+
+    pub fn push_message_to_db(&self, message: &AddTradePayload) -> RedisResult<()> {
+        let mut conn = self.get_connection()?;
+        conn.lpush("db_processor", serde_json::to_string(message).unwrap())
     }
 }

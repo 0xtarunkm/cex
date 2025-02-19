@@ -10,9 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     models::{
-        Balance, CancelOrderPayload, CreateOrderPayload, MarginPositionsPayload, MessageFromApi,
-        MessageToApi, OpenOrdersPayload, Order, OrderCancelledPayload, OrderPlacedPayload,
-        OrderSide, OrderType, PositionType, User, UserBalancesPayload,
+        AddTradePayload, Balance, CancelOrderPayload, CreateOrderPayload, MarginPositionsPayload, MessageFromApi, MessageToApi, OpenOrdersPayload, Order, OrderCancelledPayload, OrderPlacedPayload, OrderSide, OrderType, PositionType, TradeData, User, UserBalancesPayload
     },
     services::{
         pnl_service::PnlService,
@@ -411,6 +409,16 @@ impl Engine {
                         &serde_json::to_value(price).unwrap(),
                     );
                 }
+
+                let trade_info = AddTradePayload {
+                    data: TradeData {
+                        ticker: payload.market.clone(),
+                        time: Utc::now(),
+                        price: payload.price,
+                    },
+                };
+
+                let _ = redis_manager.push_message_to_db(&trade_info);
             }
             OrderSide::Sell => {
                 let mut orderbook_guard = orderbook.lock().await;

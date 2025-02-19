@@ -41,6 +41,7 @@ pub struct CreateOrderPayload {
     pub price: Decimal,
     pub quantity: Decimal,
     pub side: OrderSide,
+    pub is_margin: bool,
     pub order_type: OrderType,
     pub leverage: Option<Decimal>,
 }
