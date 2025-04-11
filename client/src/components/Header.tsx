@@ -20,7 +20,6 @@ const Header = () => {
       </div>
 
       <div className="flex items-center gap-5">
-        {/* Action Buttons */}
         <div className="flex items-center gap-3">
             <button className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-md font-semibold cursor-pointer">
                 Deposit
@@ -30,10 +29,8 @@ const Header = () => {
             </button>
         </div>
 
-        {/* Separator */}
         <div className="w-px h-6 bg-gray-800"></div>
 
-        {/* Profile/Menu */}
          <div className="flex items-center gap-3">
             <button className="bg-orange-500 text-white rounded-full w-8 h-8 flex items-center justify-center font-semibold cursor-pointer">
                 M
