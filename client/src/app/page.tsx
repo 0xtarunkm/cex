@@ -1,40 +1,25 @@
-import Image from "next/image";
 import Header from "@/components/Header";
 import MarketInfoBar from "@/components/MarketInfoBar";
-import Chart from "@/components/Chart";
 import OrderBookTrades from "@/components/OrderBookTrades";
 import OrderEntry from "@/components/OrderEntry";
+import { Chart } from "@/components/Chart";
 import BottomTabs from "@/components/BottomTabs";
 
 export default function Home() {
   return (
-    <div className="flex flex-col min-h-screen bg-black text-gray-100 font-sans">
+    <div className="grid grid-rows-[max-content_max-content_1fr] grid-cols-[3fr_1fr] min-h-screen bg-black text-gray-100 font-sans gap-2">
       <Header />
       <MarketInfoBar />
 
-      {/* Main Content Area - Using auto height and better alignment */}
-      <div className="bg-black grid grid-cols-12 gap-0.5">
-        {/* Chart takes 7 columns */}
-        <div className="col-span-7">
-          <Chart />
-        </div>
-        
-        {/* Order Book takes 2.5 columns */}
-        <div className="col-span-2">
-          <OrderBookTrades />
-        </div>
-        
-        {/* Order Entry takes 3 columns */}
-        <div className="col-span-3">
-          <OrderEntry />
-        </div>
+      <div className="grid grid-cols-[3fr_1fr] min-h-[600px]">
+        <Chart />
+        <OrderBookTrades />
       </div>
 
-      {/* BottomTabs can now extend below the viewport */}
+      <div className="row-span-2 self-start">
+        <OrderEntry />
+      </div>
       <BottomTabs />
-
-      {/* Bottom Tabs Placeholder */}
-      <footer className="h-48 border-t border-gray-700">Bottom Tabs / Balances</footer>
     </div>
   );
 }
