@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --letter-spacing-tight: -0.025em;
+  --letter-spacing-normal: 0;
+  --base-font-size: 16px;
+  
+  /* Backpack-specific colors */
+  --color-bid: rgb(16, 185, 129);
+  --color-ask: rgb(239, 68, 68);
+  --color-bid-bg: rgba(16, 185, 129, 0.06);
+  --color-ask-bg: rgba(239, 68, 68, 0.06);
+  --color-selection: rgb(59, 130, 246);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-size: var(--base-font-size);
+  line-height: 1.5;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: var(--letter-spacing-tight);
+  font-weight: var(--font-weight-semibold);
+}
+
+button, a {
+  font-weight: var(--font-weight-medium);
+}
+
+/* Global classes for Backpack-like styling */
+.text-price {
+  font-size: 1.125rem;
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-label {
+  font-size: 0.9375rem;
+  font-weight: var(--font-weight-medium);
+}
+
+.text-value {
+  font-size: 1rem;
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-header {
+  font-size: 1.25rem;
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Order book specific classes */
+.bid-row {
+  position: relative;
+}
+
+.bid-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background-color: var(--color-bid-bg);
+  z-index: 0;
+}
+
+.ask-row {
+  position: relative;
+}
+
+.ask-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background-color: var(--color-ask-bg);
+  z-index: 0;
+}
+
+.bid-text {
+  color: var(--color-bid);
+  font-weight: var(--font-weight-semibold);
+}
+
+.ask-text {
+  color: var(--color-ask);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Override some Tailwind classes for larger text */
+.text-xs {
+  font-size: 0.8125rem !important;
+  line-height: 1.25rem !important;
+}
+
+.text-sm {
+  font-size: 0.9375rem !important;
+  line-height: 1.375rem !important;
+}
+
+.text-base {
+  font-size: 1rem !important;
+  line-height: 1.5rem !important;
+}
+
+.text-lg {
+  font-size: 1.125rem !important;
+  line-height: 1.75rem !important;
+}
+
+.text-xl {
+  font-size: 1.375rem !important;
+  line-height: 1.75rem !important;
+}
+
+/* Input styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: #374151;
+  border-radius: 8px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-selection);
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-selection);
+  cursor: pointer;
+  border: none;
+}
